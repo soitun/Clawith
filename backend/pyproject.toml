@@ -19,6 +19,8 @@ dependencies = [
     "docker>=7.0.0",
     "websockets>=13.0",
     "aiofiles>=24.0.0",
+    "croniter>=2.0.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]

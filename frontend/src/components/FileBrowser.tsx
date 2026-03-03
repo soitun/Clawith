@@ -81,6 +81,7 @@ export default function FileBrowser({
     const [currentPath, setCurrentPath] = useState(rootPath);
     const [files, setFiles] = useState<FileItem[]>([]);
     const [loading, setLoading] = useState(false);
+    const [contentLoaded, setContentLoaded] = useState(false);
     const [viewing, setViewing] = useState<string | null>(singleFile || null);
     const [content, setContent] = useState('');
     const [editing, setEditing] = useState(false);
@@ -109,6 +110,7 @@ export default function FileBrowser({
             } catch {
                 setContent('');
             }
+            setContentLoaded(true);
             return;
         }
         setLoading(true);
@@ -339,10 +341,16 @@ export default function FileBrowser({
                 {editing ? (
                     <textarea className="form-textarea" value={editContent} onChange={e => setEditContent(e.target.value)}
                         rows={20} style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: '1.6' }} />
-                ) : (
+                ) : !contentLoaded ? (
+                    <div style={{ padding: '20px', color: 'var(--text-tertiary)', textAlign: 'center' }}>{t('common.loading')}</div>
+                ) : content ? (
                     <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: '13px', lineHeight: '1.6', margin: 0 }}>
-                        {content || t('common.loading')}
+                        {content}
                     </pre>
+                ) : (
+                    <div style={{ padding: '20px', color: 'var(--text-tertiary)', textAlign: 'center', fontSize: '13px' }}>
+                        {t('common.noData', 'No content yet. Click Edit to add.')}
+                    </div>
                 )}
                 {renderToast()}
             </div>
@@ -385,7 +393,7 @@ export default function FileBrowser({
                                 style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', lineHeight: '1.6', minHeight: '400px' }} />
                         ) : (
                             <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)', fontSize: '12px', lineHeight: '1.5', margin: 0 }}>
-                                {content || t('common.loading')}
+                                {content || t('common.noData', 'No content yet')}
                             </pre>
                         )
                     ) : (

@@ -89,19 +89,13 @@ Cada agente tiene un sistema de archivos completo: documentos, código, datos, p
 
 ```bash
 git clone https://github.com/dataelement/Clawith.git
-cd Clawith && cp .env.example .env
-
-# Backend
-cd backend && pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8008
-
-# Frontend (nueva terminal)
-cd frontend && npm install && npm run dev -- --port 3008
+cd Clawith
+bash setup.sh     # Instala dependencias + inicializa DB automáticamente
+bash restart.sh   # Inicia los servicios
+# → http://localhost:3008
 ```
 
-| Usuario | Contraseña | Rol |
-|---|---|---|
-| admin | admin123 | Administrador |
+El primer usuario en registrarse se convierte automáticamente en **administrador de la plataforma**.
 
 ## 📄 Licencia
 

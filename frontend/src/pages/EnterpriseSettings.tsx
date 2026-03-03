@@ -317,7 +317,7 @@ function PlatformSettings() {
                     <input className="form-input" type="number" min={1} max={20} value={maxRounds}
                         onChange={e => setMaxRounds(Number(e.target.value))} />
                     <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                        {t('enterprise.config.maxRounds')}
+                        {t('enterprise.config.maxRoundsDesc', 'Maximum number of conversation rounds between two agents in a single interaction. Controls how many back-and-forth messages agents can exchange when collaborating.')}
                     </div>
                 </div>
             </div>
@@ -377,10 +377,83 @@ function SkillsTab() {
 }
 
 
+// ─── Company Name Editor ───────────────────────────
+function CompanyNameEditor() {
+    const { t } = useTranslation();
+    const qc = useQueryClient();
+    const tenantId = localStorage.getItem('current_tenant_id') || '';
+    const [name, setName] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+
+    useEffect(() => {
+        if (!tenantId) return;
+        fetchJson<any>(`/tenants/${tenantId}`)
+            .then(d => { if (d?.name) setName(d.name); })
+            .catch(() => { });
+    }, [tenantId]);
+
+    const handleSave = async () => {
+        if (!tenantId || !name.trim()) return;
+        setSaving(true);
+        try {
+            await fetchJson(`/tenants/${tenantId}`, {
+                method: 'PUT', body: JSON.stringify({ name: name.trim() }),
+            });
+            qc.invalidateQueries({ queryKey: ['tenants'] });
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+        } catch (e) { }
+        setSaving(false);
+    };
+
+    return (
+        <div className="card" style={{ padding: '16px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <input
+                    className="form-input"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    placeholder={t('enterprise.companyName.placeholder', 'Enter company name')}
+                    style={{ flex: 1, fontSize: '14px' }}
+                    onKeyDown={e => e.key === 'Enter' && handleSave()}
+                />
+                <button className="btn btn-primary" onClick={handleSave} disabled={saving || !name.trim()}>
+                    {saving ? t('common.loading') : t('common.save', 'Save')}
+                </button>
+                {saved && <span style={{ color: 'var(--success)', fontSize: '12px' }}>✅</span>}
+            </div>
+        </div>
+    );
+}
+
+
 export default function EnterpriseSettings() {
     const { t } = useTranslation();
     const qc = useQueryClient();
-    const [activeTab, setActiveTab] = useState<'llm' | 'org' | 'info' | 'approvals' | 'audit' | 'tools' | 'skills'>('llm');
+    const [activeTab, setActiveTab] = useState<'llm' | 'org' | 'info' | 'approvals' | 'audit' | 'tools' | 'skills'>('info');
+    const [companyIntro, setCompanyIntro] = useState('');
+    const [companyIntroSaving, setCompanyIntroSaving] = useState(false);
+    const [companyIntroSaved, setCompanyIntroSaved] = useState(false);
+
+    // Load Company Intro
+    useEffect(() => {
+        fetchJson<any>('/enterprise/system-settings/company_intro')
+            .then(d => { if (d?.value?.content) setCompanyIntro(d.value.content); })
+            .catch(() => { });
+    }, []);
+
+    const saveCompanyIntro = async () => {
+        setCompanyIntroSaving(true);
+        try {
+            await fetchJson('/enterprise/system-settings/company_intro', {
+                method: 'PUT', body: JSON.stringify({ value: { content: companyIntro } }),
+            });
+            setCompanyIntroSaved(true);
+            setTimeout(() => setCompanyIntroSaved(false), 2000);
+        } catch (e) { }
+        setCompanyIntroSaving(false);
+    };
     const [auditFilter, setAuditFilter] = useState<'all' | 'background' | 'actions'>('all');
     const [infoRefresh, setInfoRefresh] = useState(0);
     const [kbPromptModal, setKbPromptModal] = useState(false);
@@ -474,7 +547,7 @@ export default function EnterpriseSettings() {
                 </div>
 
                 <div className="tabs">
-                    {(['llm', 'tools', 'skills', 'org', 'info', 'approvals', 'audit'] as const).map(tab => (
+                    {(['info', 'llm', 'tools', 'skills', 'org', 'approvals', 'audit'] as const).map(tab => (
                         <div key={tab} className={`tab ${activeTab === tab ? 'active' : ''}`} onClick={() => setActiveTab(tab)}>
                             {t(`enterprise.tabs.${tab}`)}
                         </div>
@@ -647,24 +720,56 @@ export default function EnterpriseSettings() {
                     </div>
                 )}
 
-                {/* ── Company (Tenant) / Platform Settings ── */}
+                {/* ── Company Management ── */}
                 {activeTab === 'info' && (
                     <div>
-                        <h3 style={{ marginBottom: '16px' }}>{t('enterprise.config.title')}</h3>
+                        {/* ── 0. Company Name ── */}
+                        <h3 style={{ marginBottom: '8px' }}>{t('enterprise.companyName.title', 'Company Name')}</h3>
+                        <CompanyNameEditor />
+
+                        {/* ── 1. Company Intro ── */}
+                        <h3 style={{ marginBottom: '8px' }}>{t('enterprise.companyIntro.title', 'Company Intro')}</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+                            {t('enterprise.companyIntro.description', 'Describe your company\'s mission, products, and culture. This information is included in every agent conversation as context.')}
+                        </p>
+                        <div className="card" style={{ padding: '16px', marginBottom: '24px' }}>
+                            <textarea
+                                className="form-input"
+                                value={companyIntro}
+                                onChange={e => setCompanyIntro(e.target.value)}
+                                placeholder={`# Company Name\n\n## About Us\nDescribe your company here...\n\n## Products & Services\n- Product A\n- Product B\n\n## Culture & Values\n- Value 1\n- Value 2`}
+                                style={{
+                                    minHeight: '200px', resize: 'vertical',
+                                    fontFamily: 'var(--font-mono)', fontSize: '13px',
+                                    lineHeight: '1.6', whiteSpace: 'pre-wrap',
+                                }}
+                            />
+                            <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <button className="btn btn-primary" onClick={saveCompanyIntro} disabled={companyIntroSaving}>
+                                    {companyIntroSaving ? t('common.loading') : t('common.save', 'Save')}
+                                </button>
+                                {companyIntroSaved && <span style={{ color: 'var(--success)', fontSize: '12px' }}>✅ {t('enterprise.config.saved', 'Saved')}</span>}
+                                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginLeft: 'auto' }}>
+                                    💡 {t('enterprise.companyIntro.hint', 'This content appears in every agent\'s system prompt')}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* ── 2. Company Knowledge Base ── */}
+                        <h3 style={{ marginBottom: '8px' }}>{t('enterprise.kb.title')}</h3>
+                        <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+                            {t('enterprise.kb.description', 'Shared files accessible to all agents via enterprise_info/ directory.')}
+                        </p>
+                        <div className="card" style={{ marginBottom: '24px', padding: '16px' }}>
+                            <EnterpriseKBBrowser onRefresh={() => setInfoRefresh((v: number) => v + 1)} refreshKey={infoRefresh} />
+                        </div>
+
+                        {/* ── 3. Platform Configuration ── */}
+                        <h3 style={{ marginBottom: '8px' }}>{t('enterprise.config.title')}</h3>
                         <PlatformSettings />
 
                         {/* ── Theme Color ── */}
                         <ThemeColorPicker />
-
-                        <h3 style={{ marginTop: '24px', marginBottom: '16px' }}>{t('enterprise.kb.title')}</h3>
-                        <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '16px' }}>
-                            {t('enterprise.kb.title')}
-                        </p>
-
-                        {/* Upload area */}
-                        <div className="card" style={{ marginBottom: '16px', padding: '16px' }}>
-                            <EnterpriseKBBrowser onRefresh={() => setInfoRefresh((v: number) => v + 1)} refreshKey={infoRefresh} />
-                        </div>
                     </div>
                 )}
 

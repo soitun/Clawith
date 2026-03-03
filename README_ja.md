@@ -89,19 +89,13 @@ Clawith は、オープンソースのマルチエージェントコラボレー
 
 ```bash
 git clone https://github.com/dataelement/Clawith.git
-cd Clawith && cp .env.example .env
-
-# バックエンド
-cd backend && pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8008
-
-# フロントエンド（別ターミナル）
-cd frontend && npm install && npm run dev -- --port 3008
+cd Clawith
+bash setup.sh     # 依存関係インストール + DB初期化を自動実行
+bash restart.sh   # サービス起動
+# → http://localhost:3008
 ```
 
-| ユーザー名 | パスワード | ロール |
-|---|---|---|
-| admin | admin123 | 管理者 |
+最初に登録したユーザーが自動的に**プラットフォーム管理者**になります。
 
 ## 📄 ライセンス
 

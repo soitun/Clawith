@@ -47,30 +47,60 @@ class AgentManager:
             logger.warning(f"Agent dir already exists: {agent_dir}")
             return
 
-        # Copy template
-        shutil.copytree(str(template_dir), str(agent_dir))
+        if template_dir.exists():
+            # Copy template
+            shutil.copytree(str(template_dir), str(agent_dir))
+        else:
+            # No template dir (local dev) — create minimal workspace structure
+            logger.info(f"Template dir not found ({template_dir}), creating minimal workspace")
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            (agent_dir / "workspace").mkdir(exist_ok=True)
+            (agent_dir / "workspace" / "knowledge_base").mkdir(exist_ok=True)
+            (agent_dir / "memory").mkdir(exist_ok=True)
+            (agent_dir / "skills").mkdir(exist_ok=True)
+            (agent_dir / "tasks.json").write_text("[]", encoding="utf-8")
 
         # Customize soul.md
         soul_path = agent_dir / "soul.md"
-        if soul_path.exists():
-            # Get creator name
-            from app.models.user import User
-            result = await db.execute(select(User).where(User.id == agent.creator_id))
-            creator = result.scalar_one_or_none()
-            creator_name = creator.display_name if creator else "Unknown"
+        # Get creator name
+        from app.models.user import User
+        result = await db.execute(select(User).where(User.id == agent.creator_id))
+        creator = result.scalar_one_or_none()
+        creator_name = creator.display_name if creator else "Unknown"
 
+        soul_content = f"# Personality\n\nI'm {agent.name}, {agent.role_description or 'a digital assistant'}.\n"
+        if soul_path.exists():
             template_content = soul_path.read_text()
             soul_content = template_content.replace("{{agent_name}}", agent.name)
             soul_content = soul_content.replace("{{role_description}}", agent.role_description or "通用助手")
             soul_content = soul_content.replace("{{creator_name}}", creator_name)
             soul_content = soul_content.replace("{{created_at}}", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
-            if personality:
-                soul_content += f"\n\n## Personality\n{personality}\n"
-            if boundaries:
-                soul_content += f"\n## Boundaries\n{boundaries}\n"
+        if personality:
+            soul_content += f"\n\n## Personality\n{personality}\n"
+        if boundaries:
+            soul_content += f"\n## Boundaries\n{boundaries}\n"
 
-            soul_path.write_text(soul_content)
+        soul_path.write_text(soul_content, encoding="utf-8")
+
+        # Ensure memory.md exists
+        mem_path = agent_dir / "memory" / "memory.md"
+        if not mem_path.exists():
+            mem_path.write_text("# Memory\n\n_Record important information and knowledge here._\n", encoding="utf-8")
+
+        # Ensure reflections.md exists — copy from central template
+        refl_path = agent_dir / "memory" / "reflections.md"
+        if not refl_path.exists():
+            refl_template = Path(__file__).parent.parent / "templates" / "reflections.md"
+            refl_content = refl_template.read_text(encoding="utf-8") if refl_template.exists() else "# Reflections Journal\n"
+            refl_path.write_text(refl_content, encoding="utf-8")
+
+        # Ensure HEARTBEAT.md exists — copy from central template
+        hb_path = agent_dir / "HEARTBEAT.md"
+        if not hb_path.exists():
+            hb_template = Path(__file__).parent.parent / "templates" / "HEARTBEAT.md"
+            hb_content = hb_template.read_text(encoding="utf-8") if hb_template.exists() else "# Heartbeat Instructions\n"
+            hb_path.write_text(hb_content, encoding="utf-8")
 
         # Customize state.json
         state_path = agent_dir / "state.json"

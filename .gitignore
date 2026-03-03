@@ -12,3 +12,7 @@ venv/
 .ruff_cache/
 *.db
 .DS_Store
+
+# Runtime agent data
+backend/data/
+backend/agent_data/

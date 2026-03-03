@@ -91,21 +91,24 @@ Agent 可以在运行时**发现并安装新工具**。当 Agent 遇到无法处
 ### 环境要求
 - Python 3.12+
 - Node.js 20+
+- PostgreSQL 15+（或 SQLite 快速测试）
 
-### 本地运行
+### 一键安装
 
 ```bash
 git clone https://github.com/dataelement/Clawith.git
 cd Clawith
-cp .env.example .env    # 编辑 .env 填入密钥
+bash setup.sh
+```
 
-# 后端
-cd backend && pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8008
+自动完成：创建 `.env` → 安装后端/前端依赖 → 建表 → 初始化默认公司、模板和技能。
 
-# 前端（新终端）
-cd frontend && npm install
-npm run dev -- --port 3008
+启动服务：
+
+```bash
+bash restart.sh
+# → 前端: http://localhost:3008
+# → 后端: http://localhost:8008
 ```
 
 ### Docker 部署
@@ -117,11 +120,9 @@ docker compose up -d
 # → http://localhost:3000
 ```
 
-### 默认账号
+### 首次登录
 
-| 用户名 | 密码 | 角色 |
-|---|---|---|
-| admin | admin123 | 平台管理员 |
+第一个注册的用户自动成为**平台管理员**。打开应用，点击"注册"，创建你的账号即可。
 
 ---
 

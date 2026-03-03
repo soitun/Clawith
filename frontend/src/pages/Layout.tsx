@@ -99,6 +99,21 @@ export default function Layout() {
         enabled: !!user && user.role === 'platform_admin',
     });
 
+    // Auto-select user's tenant or first available tenant; also fix stale localStorage values
+    useEffect(() => {
+        if (!user) return;
+        const validTenantIds = tenants.map((t: any) => t.id);
+        const storedIsValid = currentTenant &&
+            (validTenantIds.includes(currentTenant) || currentTenant === user.tenant_id);
+        if (!storedIsValid) {
+            const fallback = user.tenant_id || (tenants.length > 0 ? tenants[0].id : '');
+            if (fallback) {
+                setCurrentTenant(fallback);
+                localStorage.setItem('current_tenant_id', fallback);
+            }
+        }
+    }, [user, tenants, currentTenant]);
+
     const { data: agents = [] } = useQuery({
         queryKey: ['agents', currentTenant],
         queryFn: () => agentApi.list(currentTenant || undefined),
@@ -150,7 +165,6 @@ export default function Layout() {
                                 cursor: 'pointer',
                             }}
                         >
-                            <option value="">{t('layout.allCompanies')}</option>
                             {tenants.map((t: any) => (
                                 <option key={t.id} value={t.id}>{t.name}</option>
                             ))}

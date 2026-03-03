@@ -188,6 +188,23 @@ async def build_agent_context(agent_id: uuid.UUID, agent_name: str, role_descrip
     if role_description:
         parts.append(f"\n## Role\n{role_description}")
 
+    # --- Company Intro (from system settings) ---
+    try:
+        from app.database import async_session
+        from app.models.system_settings import SystemSetting
+        from sqlalchemy import select as sa_select
+        async with async_session() as db:
+            result = await db.execute(
+                sa_select(SystemSetting).where(SystemSetting.key == "company_intro")
+            )
+            setting = result.scalar_one_or_none()
+            if setting and setting.value and setting.value.get("content"):
+                company_intro = setting.value["content"].strip()
+                if company_intro:
+                    parts.append(f"\n## Company Information\n{company_intro}")
+    except Exception:
+        pass  # Don't break agent if DB is unavailable
+
     if soul and soul not in ("_描述你的角色和职责。_", "_Describe your role and responsibilities._"):
         parts.append(f"\n## Personality\n{soul}")
 
@@ -207,6 +224,7 @@ You have a dedicated workspace with this structure:
   - tasks.json     → Your real task list (read-only; use `manage_tasks` tool to manage)
   - soul.md        → Your personality definition
   - memory/memory.md → Your long-term memory and notes
+  - memory/reflections.md → Your autonomous thinking journal (hypotheses, discoveries, ongoing inquiries)
   - skills/        → Your skill definition files (one .md per skill)
   - workspace/     → Your work files (reports, documents, etc.)
   - relationships.md → Your relationship list
@@ -231,10 +249,12 @@ You have a dedicated workspace with this structure:
 
 4. **Use `write_file` to update memory/memory.md with important information.**
 
-5. **Use `send_feishu_message` to message human colleagues in your relationships.**
+5. **During heartbeats, record your thinking and discoveries in memory/reflections.md.**
 
-6. **Reply in the same language the user uses.**
+6. **Use `send_feishu_message` to message human colleagues in your relationships.**
 
-7. **Never assume a file exists — always verify with `list_files` first.**""")
+7. **Reply in the same language the user uses.**
+
+8. **Never assume a file exists — always verify with `list_files` first.**""")
 
     return "\n".join(parts)

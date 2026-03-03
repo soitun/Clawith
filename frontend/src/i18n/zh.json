@@ -455,13 +455,24 @@
       "publicUrl": "公网地址 (PUBLIC_BASE_URL)",
       "publicUrlPlaceholder": "例：https://xxx.cpolar.top",
       "maxRounds": "Agent 对话轮次上限",
+      "maxRoundsDesc": "两个 Agent 之间单次协作对话的最大轮次。控制 Agent 协作时可以进行多少轮消息交换。",
       "maxRoundsPlaceholder": "默认 20",
       "save": "保存",
       "saved": "已保存",
       "themeColor": "主题色"
     },
+    "companyName": {
+      "title": "公司名称",
+      "placeholder": "输入公司名称"
+    },
+    "companyIntro": {
+      "title": "公司简介",
+      "description": "描述你的公司使命、产品和文化。此信息会作为上下文包含在每次 Agent 对话中。",
+      "hint": "此内容会出现在每个 Agent 的系统提示词中"
+    },
     "kb": {
       "title": "公司知识库",
+      "description": "共享文件，所有 Agent 可通过 enterprise_info/ 目录访问。",
       "rootDir": "根目录",
       "uploadFile": "上传文件",
       "newFolder": "新建文件夹",

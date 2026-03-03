@@ -16,7 +16,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
-    """Register a new user account."""
+    """Register a new user account.
+
+    The first user to register becomes the platform admin automatically.
+    """
     # Check existing
     existing = await db.execute(
         select(User).where((User.username == data.username) | (User.email == data.email))
@@ -24,24 +27,47 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username or email already exists")
 
-    # Validate tenant if provided
+    # Check if this is the first user (→ platform admin)
+    from sqlalchemy import func
+    user_count = await db.execute(select(func.count()).select_from(User))
+    is_first_user = user_count.scalar() == 0
+
+    # Resolve tenant — required; fall back to default if not provided
+    from app.models.tenant import Tenant
     tenant_uuid = None
     if data.tenant_id:
-        from app.models.tenant import Tenant
         t_result = await db.execute(select(Tenant).where(Tenant.id == uuid.UUID(data.tenant_id)))
-        if not t_result.scalar_one_or_none():
+        tenant = t_result.scalar_one_or_none()
+        if not tenant:
             raise HTTPException(status_code=400, detail="选择的公司不存在")
-        tenant_uuid = uuid.UUID(data.tenant_id)
+        tenant_uuid = tenant.id
+    else:
+        # Auto-assign to the default company
+        default = await db.execute(select(Tenant).where(Tenant.slug == "default"))
+        tenant = default.scalar_one_or_none()
+        if tenant:
+            tenant_uuid = tenant.id
 
     user = User(
         username=data.username,
         email=data.email,
         password_hash=hash_password(data.password),
         display_name=data.display_name,
+        role="platform_admin" if is_first_user else "member",
         tenant_id=tenant_uuid,
     )
     db.add(user)
     await db.flush()
+
+    # Seed default agents after first user (platform admin) registration
+    if is_first_user:
+        await db.commit()  # commit user first so seeder can find the admin
+        try:
+            from app.services.agent_seeder import seed_default_agents
+            await seed_default_agents()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to seed default agents: {e}")
 
     token = create_access_token(str(user.id), user.role)
     return TokenResponse(access_token=token, user=UserOut.model_validate(user))

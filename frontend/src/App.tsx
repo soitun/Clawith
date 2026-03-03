@@ -23,6 +23,10 @@ export default function App() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Initialize theme on app mount (ensures login page gets correct theme)
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
         if (token && !user) {
             authApi.me()
                 .then((u) => setAuth(u, token))

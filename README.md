@@ -91,21 +91,28 @@ Every agent has a full file system: documents, code, data, plans. Agents read, w
 ### Prerequisites
 - Python 3.12+
 - Node.js 20+
+- PostgreSQL 15+ (or SQLite for quick testing)
 
-### Run Locally
+### One-Command Setup
 
 ```bash
 git clone https://github.com/dataelement/Clawith.git
 cd Clawith
-cp .env.example .env    # edit .env with your secrets
+bash setup.sh
+```
 
-# Backend
-cd backend && pip install -e ".[dev]"
-uvicorn app.main:app --reload --port 8008
+This will:
+1. Create `.env` from `.env.example`
+2. Install backend dependencies (Python venv + pip)
+3. Install frontend dependencies (npm)
+4. Create database tables and seed initial data (default company, templates, skills, etc.)
 
-# Frontend (new terminal)
-cd frontend && npm install
-npm run dev -- --port 3008
+Then start the app:
+
+```bash
+bash restart.sh
+# → Frontend: http://localhost:3008
+# → Backend:  http://localhost:8008
 ```
 
 ### Docker
@@ -117,11 +124,9 @@ docker compose up -d
 # → http://localhost:3000
 ```
 
-### Default Login
+### First Login
 
-| Username | Password | Role |
-|---|---|---|
-| admin | admin123 | Platform Admin |
+The first user to register automatically becomes the **platform admin**. Open the app, click "Register", and create your account.
 
 ---
 
