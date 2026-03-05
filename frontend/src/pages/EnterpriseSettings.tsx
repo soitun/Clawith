@@ -929,40 +929,6 @@ export default function EnterpriseSettings() {
                 {/* ── Tools Tab ── */}
                 {activeTab === 'tools' && (
                     <div>
-                        {/* ── Jina AI API Key ── */}
-                        <div className="card" style={{ marginBottom: '20px', padding: '16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-                                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🔮</div>
-                                <div>
-                                    <div style={{ fontWeight: 600, fontSize: '14px' }}>Jina AI API Key</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Used by <code>jina_search</code> and <code>jina_read</code> tools — <a href="https://jina.ai" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)' }}>get one at jina.ai</a></div>
-                                </div>
-                                {jinaKeyMasked && <span className="badge badge-success" style={{ marginLeft: 'auto' }}>✅ Configured</span>}
-                            </div>
-                            {jinaKeyMasked && (
-                                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', background: 'var(--bg-secondary)', padding: '6px 10px', borderRadius: '6px', marginBottom: '10px' }}>
-                                    {jinaKeyMasked}
-                                </div>
-                            )}
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                <input
-                                    className="form-input"
-                                    type="password"
-                                    placeholder={jinaKeyMasked ? 'Enter new key to replace…' : 'jina_xxxxxxxxxxxxxxxx…'}
-                                    value={jinaKey}
-                                    onChange={e => setJinaKey(e.target.value)}
-                                    style={{ flex: 1, fontSize: '13px' }}
-                                />
-                                <button className="btn btn-primary" style={{ fontSize: '12px', whiteSpace: 'nowrap' }} onClick={saveJinaKey} disabled={!jinaKey || jinaKeySaving}>
-                                    {jinaKeySaving ? '…' : 'Save'}
-                                </button>
-                                {jinaKeyMasked && (
-                                    <button className="btn btn-ghost" style={{ fontSize: '12px', color: 'var(--error)' }} onClick={clearJinaKey}>Clear</button>
-                                )}
-                                {jinaKeySaved && <span style={{ color: 'var(--success)', fontSize: '12px' }}>✅</span>}
-                            </div>
-                        </div>
-
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                             <h3>{t('enterprise.tools.title')}</h3>
                             <button className="btn btn-primary" onClick={() => setShowAddMCP(true)}>+ MCP Server</button>
@@ -1057,8 +1023,23 @@ export default function EnterpriseSettings() {
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 {hasConfig && (
-                                                    <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => {
-                                                        if (isEditing) { setEditingToolId(null); } else { setEditingToolId(tool.id); setEditingConfig({ ...tool.config }); }
+                                                    <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={async () => {
+                                                        if (isEditing) {
+                                                            setEditingToolId(null);
+                                                        } else {
+                                                            setEditingToolId(tool.id);
+                                                            const cfg = { ...tool.config };
+                                                            // Pre-load jina api_key from system_settings
+                                                            if (tool.name === 'jina_search' || tool.name === 'jina_read') {
+                                                                try {
+                                                                    const token = localStorage.getItem('token');
+                                                                    const res = await fetch('/api/enterprise/system-settings/jina_api_key', { headers: { Authorization: `Bearer ${token}` } });
+                                                                    const d = await res.json();
+                                                                    if (d.value?.api_key) cfg.api_key = d.value.api_key;
+                                                                } catch { }
+                                                            }
+                                                            setEditingConfig(cfg);
+                                                        }
                                                     }}>{isEditing ? t('enterprise.tools.collapse') : t('enterprise.tools.configure')}</button>
                                                 )}
                                                 {tool.type !== 'builtin' && (
@@ -1116,7 +1097,19 @@ export default function EnterpriseSettings() {
                                                     })}
                                                     <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                                                         <button className="btn btn-primary" onClick={async () => {
-                                                            await fetchJson(`/tools/${tool.id}`, { method: 'PUT', body: JSON.stringify({ config: editingConfig }) });
+                                                            if (tool.name === 'jina_search' || tool.name === 'jina_read') {
+                                                                // Save api_key to system_settings (shared by both jina tools)
+                                                                if (editingConfig.api_key) {
+                                                                    const token = localStorage.getItem('token');
+                                                                    await fetch('/api/enterprise/system-settings/jina_api_key', {
+                                                                        method: 'PUT',
+                                                                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                                                                        body: JSON.stringify({ value: { api_key: editingConfig.api_key } }),
+                                                                    });
+                                                                }
+                                                            } else {
+                                                                await fetchJson(`/tools/${tool.id}`, { method: 'PUT', body: JSON.stringify({ config: editingConfig }) });
+                                                            }
                                                             setEditingToolId(null);
                                                             loadAllTools();
                                                         }}>{t('enterprise.tools.saveConfig')}</button>

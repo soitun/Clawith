@@ -477,6 +477,15 @@ async def seed_builtin_tools():
                         db.add(AgentTool(agent_id=agent_id, tool_id=tool_id, enabled=True))
             print(f"[ToolSeeder] Auto-assigned {len(new_tool_ids)} new tools to {len(agent_ids)} agents")
 
+        # Remove obsolete tools that have been replaced
+        OBSOLETE_TOOLS = ["bing_search", "read_webpage"]
+        for obsolete_name in OBSOLETE_TOOLS:
+            result = await db.execute(select(Tool).where(Tool.name == obsolete_name))
+            obsolete = result.scalar_one_or_none()
+            if obsolete:
+                await db.delete(obsolete)
+                print(f"[ToolSeeder] Removed obsolete tool: {obsolete_name}")
+
         await db.commit()
         print("[ToolSeeder] Builtin tools seeded")
 
