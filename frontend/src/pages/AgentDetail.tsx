@@ -2245,86 +2245,6 @@ export default function AgentDetail() {
                                         💡 {t('agent.settings.channel.syncHint', 'Before configuring the Feishu bot, please sync your organization structure in Enterprise Settings → Org Structure first. This ensures the bot can identify message senders.')}
                                     </div>
 
-                                    {/* Feishu */}
-                                    <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-tertiary)' }}>Feishu</span>
-                                                <div>
-                                                    <div style={{ fontWeight: 600, fontSize: '14px' }}>{t('agent.settings.channel.feishu')}</div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Feishu / Lark</div>
-                                                </div>
-                                            </div>
-                                            {channelConfig && (
-                                                <span className={`badge ${channelConfig.is_configured ? 'badge-success' : 'badge-warning'}`}>
-                                                    {channelConfig.is_configured ? t('agent.settings.channel.configured') : t('agent.settings.channel.notConfigured')}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {channelConfig ? (
-                                            <div>
-                                                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '8px' }}>App ID: <code>{channelConfig.app_id}</code></div>
-                                                <div style={{ background: 'var(--bg-secondary)', borderRadius: '6px', padding: '10px', fontSize: '12px', fontFamily: 'var(--font-mono)', marginBottom: '12px' }}>
-                                                    <div style={{ color: 'var(--text-tertiary)', marginBottom: '6px' }}>Webhook URL</div>
-                                                    <div style={{ lineHeight: 1.6, wordBreak: 'break-all' }}>
-                                                        <span style={{ color: 'var(--accent-primary)' }}>
-                                                            {webhookData?.webhook_url || `${window.location.origin}/api/channel/feishu/${id}/webhook`}
-                                                        </span>
-                                                        <button
-                                                            title="Copy"
-                                                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '6px', padding: '1px 4px', cursor: 'pointer', borderRadius: '3px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', verticalAlign: 'middle', lineHeight: 1 }}
-                                                            onClick={() => {
-                                                                const url = webhookData?.webhook_url || `${window.location.origin}/api/channel/feishu/${id}/webhook`;
-                                                                navigator.clipboard.writeText(url).then(() => {
-                                                                    const btn = document.activeElement as HTMLButtonElement;
-                                                                    if (btn) { const origHtml = btn.innerHTML; btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="13 2 5 10 2 7"/></svg>'; setTimeout(() => { btn.innerHTML = origHtml; }, 1500); }
-                                                                });
-                                                            }}
-                                                        >
-                                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                                                <rect x="4" y="4" width="9" height="11" rx="1.5" />
-                                                                <path d="M3 11H2a1 1 0 01-1-1V2a1 1 0 011-1h8a1 1 0 011 1v1" />
-                                                            </svg>
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <button className="btn btn-danger" style={{ fontSize: '12px', padding: '4px 12px' }} onClick={async () => { await channelApi.delete(id!); queryClient.invalidateQueries({ queryKey: ['channel', id] }); }}>Disconnect</button>
-                                            </div>
-                                        ) : (
-                                            <div>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-                                                    <div>
-                                                        <label style={{ fontSize: '12px', fontWeight: 500, display: 'block', marginBottom: '4px' }}>App ID *</label>
-                                                        <input className="input" value={channelForm.app_id} onChange={e => setChannelForm({ ...channelForm, app_id: e.target.value })} placeholder="cli_xxxxxxxxxxxxxxxx" style={{ fontSize: '12px' }} />
-                                                    </div>
-                                                    <div>
-                                                        <label style={{ fontSize: '12px', fontWeight: 500, display: 'block', marginBottom: '4px' }}>App Secret *</label>
-                                                        <input className="input" type="password" value={channelForm.app_secret} onChange={e => setChannelForm({ ...channelForm, app_secret: e.target.value })} style={{ fontSize: '12px' }} />
-                                                    </div>
-                                                    <div>
-                                                        <label style={{ fontSize: '12px', fontWeight: 500, display: 'block', marginBottom: '4px' }}>Encrypt Key</label>
-                                                        <input className="input" value={channelForm.encrypt_key} onChange={e => setChannelForm({ ...channelForm, encrypt_key: e.target.value })} style={{ fontSize: '12px' }} />
-                                                    </div>
-                                                </div>
-                                                <button className="btn btn-primary" style={{ fontSize: '12px' }} onClick={() => saveChannel.mutate()} disabled={!channelForm.app_id || !channelForm.app_secret || saveChannel.isPending}>
-                                                    {saveChannel.isPending ? t('common.loading') : t('agent.settings.channel.saveChannel')}
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* DingTalk — coming soon */}
-                                    <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '16px', marginBottom: '12px', opacity: 0.6 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-tertiary)' }}>Web</span>
-                                            <div>
-                                                <div style={{ fontWeight: 600, fontSize: '14px' }}>DingTalk <span className="badge" style={{ fontSize: '10px', marginLeft: '6px' }}>Coming soon</span></div>
-                                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>DingTalk</div>
-                                            </div>
-                                        </div>
-                                    </div>
-
                                     {/* Slack */}
                                     <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
@@ -2410,6 +2330,86 @@ export default function AgentDetail() {
                                         )}
                                     </div>
 
+                                    {/* Feishu */}
+                                    <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-tertiary)' }}>Feishu</span>
+                                                <div>
+                                                    <div style={{ fontWeight: 600, fontSize: '14px' }}>{t('agent.settings.channel.feishu')}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Feishu / Lark</div>
+                                                </div>
+                                            </div>
+                                            {channelConfig && (
+                                                <span className={`badge ${channelConfig.is_configured ? 'badge-success' : 'badge-warning'}`}>
+                                                    {channelConfig.is_configured ? t('agent.settings.channel.configured') : t('agent.settings.channel.notConfigured')}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {channelConfig ? (
+                                            <div>
+                                                <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '8px' }}>App ID: <code>{channelConfig.app_id}</code></div>
+                                                <div style={{ background: 'var(--bg-secondary)', borderRadius: '6px', padding: '10px', fontSize: '12px', fontFamily: 'var(--font-mono)', marginBottom: '12px' }}>
+                                                    <div style={{ color: 'var(--text-tertiary)', marginBottom: '6px' }}>Webhook URL</div>
+                                                    <div style={{ lineHeight: 1.6, wordBreak: 'break-all' }}>
+                                                        <span style={{ color: 'var(--accent-primary)' }}>
+                                                            {webhookData?.webhook_url || `${window.location.origin}/api/channel/feishu/${id}/webhook`}
+                                                        </span>
+                                                        <button
+                                                            title="Copy"
+                                                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: '6px', padding: '1px 4px', cursor: 'pointer', borderRadius: '3px', border: '1px solid var(--border-color)', background: 'var(--bg-primary)', color: 'var(--text-secondary)', verticalAlign: 'middle', lineHeight: 1 }}
+                                                            onClick={() => {
+                                                                const url = webhookData?.webhook_url || `${window.location.origin}/api/channel/feishu/${id}/webhook`;
+                                                                navigator.clipboard.writeText(url).then(() => {
+                                                                    const btn = document.activeElement as HTMLButtonElement;
+                                                                    if (btn) { const origHtml = btn.innerHTML; btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="13 2 5 10 2 7"/></svg>'; setTimeout(() => { btn.innerHTML = origHtml; }, 1500); }
+                                                                });
+                                                            }}
+                                                        >
+                                                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                                                <rect x="4" y="4" width="9" height="11" rx="1.5" />
+                                                                <path d="M3 11H2a1 1 0 01-1-1V2a1 1 0 011-1h8a1 1 0 011 1v1" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <button className="btn btn-danger" style={{ fontSize: '12px', padding: '4px 12px' }} onClick={async () => { await channelApi.delete(id!); queryClient.invalidateQueries({ queryKey: ['channel', id] }); }}>Disconnect</button>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                                                    <div>
+                                                        <label style={{ fontSize: '12px', fontWeight: 500, display: 'block', marginBottom: '4px' }}>App ID *</label>
+                                                        <input className="input" value={channelForm.app_id} onChange={e => setChannelForm({ ...channelForm, app_id: e.target.value })} placeholder="cli_xxxxxxxxxxxxxxxx" style={{ fontSize: '12px' }} />
+                                                    </div>
+                                                    <div>
+                                                        <label style={{ fontSize: '12px', fontWeight: 500, display: 'block', marginBottom: '4px' }}>App Secret *</label>
+                                                        <input className="input" type="password" value={channelForm.app_secret} onChange={e => setChannelForm({ ...channelForm, app_secret: e.target.value })} style={{ fontSize: '12px' }} />
+                                                    </div>
+                                                    <div>
+                                                        <label style={{ fontSize: '12px', fontWeight: 500, display: 'block', marginBottom: '4px' }}>Encrypt Key</label>
+                                                        <input className="input" value={channelForm.encrypt_key} onChange={e => setChannelForm({ ...channelForm, encrypt_key: e.target.value })} style={{ fontSize: '12px' }} />
+                                                    </div>
+                                                </div>
+                                                <button className="btn btn-primary" style={{ fontSize: '12px' }} onClick={() => saveChannel.mutate()} disabled={!channelForm.app_id || !channelForm.app_secret || saveChannel.isPending}>
+                                                    {saveChannel.isPending ? t('common.loading') : t('agent.settings.channel.saveChannel')}
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* DingTalk — coming soon */}
+                                    <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '16px', marginBottom: '12px', opacity: 0.6 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-tertiary)' }}>Web</span>
+                                            <div>
+                                                <div style={{ fontWeight: 600, fontSize: '14px' }}>DingTalk <span className="badge" style={{ fontSize: '10px', marginLeft: '6px' }}>Coming soon</span></div>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>DingTalk</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {/* WeCom — coming soon */}
                                     <div style={{ border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '16px', opacity: 0.6 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2420,33 +2420,36 @@ export default function AgentDetail() {
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                </div >
 
                                 {/* Danger Zone */}
-                                <div className="card" style={{ borderColor: 'var(--error)' }}>
+                                < div className="card" style={{ borderColor: 'var(--error)' }
+                                }>
                                     <h4 style={{ color: 'var(--error)', marginBottom: '12px' }}>{t('agent.settings.danger.title')}</h4>
                                     <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
                                         {t('agent.settings.danger.deleteWarning')}
                                     </p>
-                                    {!showDeleteConfirm ? (
-                                        <button className="btn btn-danger" onClick={() => setShowDeleteConfirm(true)}>× {t('agent.settings.danger.deleteAgent')}</button>
-                                    ) : (
-                                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '13px', color: 'var(--error)', fontWeight: 600 }}>{t('agent.settings.danger.deleteWarning')}</span>
-                                            <button className="btn btn-danger" onClick={async () => {
-                                                try {
-                                                    await agentApi.delete(id!);
-                                                    queryClient.invalidateQueries({ queryKey: ['agents'] });
-                                                    navigate('/');
-                                                } catch (err: any) {
-                                                    alert(err?.message || 'Failed to delete agent');
-                                                }
-                                            }}>{t('agent.settings.danger.confirmDelete')}</button>
-                                            <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)}>{t('common.cancel')}</button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                                    {
+                                        !showDeleteConfirm ? (
+                                            <button className="btn btn-danger" onClick={() => setShowDeleteConfirm(true)}>× {t('agent.settings.danger.deleteAgent')}</button>
+                                        ) : (
+                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '13px', color: 'var(--error)', fontWeight: 600 }}>{t('agent.settings.danger.deleteWarning')}</span>
+                                                <button className="btn btn-danger" onClick={async () => {
+                                                    try {
+                                                        await agentApi.delete(id!);
+                                                        queryClient.invalidateQueries({ queryKey: ['agents'] });
+                                                        navigate('/');
+                                                    } catch (err: any) {
+                                                        alert(err?.message || 'Failed to delete agent');
+                                                    }
+                                                }}>{t('agent.settings.danger.confirmDelete')}</button>
+                                                <button className="btn btn-secondary" onClick={() => setShowDeleteConfirm(false)}>{t('common.cancel')}</button>
+                                            </div>
+                                        )
+                                    }
+                                </div >
+                            </div >
                         )
                     })()
                 }

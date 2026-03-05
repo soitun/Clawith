@@ -28,9 +28,16 @@ export default function AgentCreate() {
         feishu_app_id: '',
         feishu_app_secret: '',
         feishu_encrypt_key: '',
+        slack_bot_token: '',
+        slack_signing_secret: '',
+        discord_application_id: '',
+        discord_bot_token: '',
+        discord_public_key: '',
         skill_ids: [] as string[],
     });
     const [feishuOpen, setFeishuOpen] = useState(false);
+    const [slackOpen, setSlackOpen] = useState(false);
+    const [discordOpen, setDiscordOpen] = useState(false);
 
     // Fetch LLM models for step 1
     const { data: models = [] } = useQuery({
@@ -371,7 +378,7 @@ export default function AgentCreate() {
                     </div>
                 )}
 
-                {/* Step 5: Feishu Channel */}
+                {/* Step 5: Channel */}
                 {step === 4 && (
                     <div>
                         <h3 style={{ marginBottom: '20px', fontWeight: 600, fontSize: '15px' }}>{t('wizard.step5.title', 'Channel Configuration')}</h3>
@@ -380,6 +387,81 @@ export default function AgentCreate() {
                         </p>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {/* Slack — expandable */}
+                            <div style={{ border: '1px solid var(--border-default)', borderRadius: '8px', overflow: 'hidden' }}>
+                                <div
+                                    onClick={() => setSlackOpen(!slackOpen)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px', padding: '14px',
+                                        cursor: 'pointer', background: slackOpen ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
+                                        borderBottom: slackOpen ? '1px solid var(--border-default)' : 'none',
+                                    }}
+                                >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6.194 14.644a2.194 2.194 0 110 4.388 2.194 2.194 0 010-4.388zm-2.194 0H0v-2.194a2.194 2.194 0 014.388 0v2.194zm16.612 0a2.194 2.194 0 110 4.388 2.194 2.194 0 010-4.388zm0-2.194a2.194 2.194 0 010-4.388 2.194 2.194 0 010 4.388zm0 0v2.194h2.194A2.194 2.194 0 0024 12.45a2.194 2.194 0 00-2.194-2.194h-1.194zm-16.612 0a2.194 2.194 0 010-4.388 2.194 2.194 0 010 4.388zm0 0v2.194H2A2.194 2.194 0 010 12.45a2.194 2.194 0 012.194-2.194h1.806z" fill="#611F69" opacity=".4" /><path d="M9.388 4.388a2.194 2.194 0 110-4.388 2.194 2.194 0 010 4.388zm0 2.194v-2.194H7.194A2.194 2.194 0 005 6.582a2.194 2.194 0 002.194 2.194h2.194zm0 12.612a2.194 2.194 0 110 4.388 2.194 2.194 0 010-4.388zm0-2.194v2.194H7.194A2.194 2.194 0 005 17.418a2.194 2.194 0 002.194 2.194h.194zm4.224-12.612a2.194 2.194 0 110-4.388 2.194 2.194 0 010 4.388zm2.194 0H13.612V2.194a2.194 2.194 0 014.388 0v2.194zm-2.194 14.806a2.194 2.194 0 110 4.388 2.194 2.194 0 010-4.388zm-2.194 0h2.194v2.194a2.194 2.194 0 01-4.388 0v-2.194z" fill="#611F69" /></svg>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 500, fontSize: '13px' }}>Slack</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Slack Bot</div>
+                                    </div>
+                                    {form.slack_bot_token && <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.15)', color: 'rgb(16,185,129)', fontWeight: 500 }}>Configured</span>}
+                                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: slackOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                                </div>
+                                {slackOpen && (
+                                    <div style={{ padding: '16px' }}>
+                                        <div className="form-group">
+                                            <label className="form-label">Bot Token</label>
+                                            <input className="form-input" value={form.slack_bot_token}
+                                                onChange={(e) => setForm({ ...form, slack_bot_token: e.target.value })}
+                                                placeholder="xoxb-..." />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Signing Secret</label>
+                                            <input className="form-input" type="password" value={form.slack_signing_secret}
+                                                onChange={(e) => setForm({ ...form, slack_signing_secret: e.target.value })} />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Discord — expandable */}
+                            <div style={{ border: '1px solid var(--border-default)', borderRadius: '8px', overflow: 'hidden' }}>
+                                <div
+                                    onClick={() => setDiscordOpen(!discordOpen)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '12px', padding: '14px',
+                                        cursor: 'pointer', background: discordOpen ? 'var(--accent-subtle)' : 'var(--bg-elevated)',
+                                        borderBottom: discordOpen ? '1px solid var(--border-default)' : 'none',
+                                    }}
+                                >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028 14.09 14.09 0 001.226-1.994.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" /></svg>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: 500, fontSize: '13px' }}>Discord</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Slash Commands (/ask)</div>
+                                    </div>
+                                    {form.discord_bot_token && <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '10px', background: 'rgba(16,185,129,0.15)', color: 'rgb(16,185,129)', fontWeight: 500 }}>Configured</span>}
+                                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', transition: 'transform 0.2s', transform: discordOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                                </div>
+                                {discordOpen && (
+                                    <div style={{ padding: '16px' }}>
+                                        <div className="form-group">
+                                            <label className="form-label">Application ID</label>
+                                            <input className="form-input" value={form.discord_application_id}
+                                                onChange={(e) => setForm({ ...form, discord_application_id: e.target.value })}
+                                                placeholder="1234567890" />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Bot Token</label>
+                                            <input className="form-input" type="password" value={form.discord_bot_token}
+                                                onChange={(e) => setForm({ ...form, discord_bot_token: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Public Key</label>
+                                            <input className="form-input" value={form.discord_public_key}
+                                                onChange={(e) => setForm({ ...form, discord_public_key: e.target.value })} />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Feishu — expandable */}
                             <div style={{ border: '1px solid var(--border-default)', borderRadius: '8px', overflow: 'hidden' }}>
                                 <div
@@ -431,11 +513,10 @@ export default function AgentCreate() {
                                 )}
                             </div>
 
-                            {/* Other channels — listed but not configurable yet */}
+                            {/* Other channels — coming soon */}
                             {[
                                 { icon: '💬', name: t('wizard.step5.dingtalk', 'DingTalk'), desc: t('wizard.step5.dingtalkDesc', 'DingTalk custom robot integration') },
                                 { icon: '🏢', name: t('wizard.step5.wecom', 'WeCom'), desc: t('wizard.step5.wecomDesc', 'WeCom (企业微信) application bot') },
-                                { icon: '💜', name: 'Slack', desc: t('wizard.step5.slackDesc', 'Slack workspace bot integration') },
                                 { icon: '📱', name: 'WhatsApp', desc: t('wizard.step5.whatsappDesc', 'WhatsApp Business API integration') },
                             ].map((ch) => (
                                 <div key={ch.name} style={{
@@ -453,7 +534,7 @@ export default function AgentCreate() {
                             ))}
                         </div>
 
-                        {!form.feishu_app_id && (
+                        {!form.feishu_app_id && !form.slack_bot_token && !form.discord_bot_token && (
                             <div style={{ padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '12px', color: 'var(--text-tertiary)', textAlign: 'center', marginTop: '12px' }}>
                                 {t('wizard.step5.skipHint')}
                             </div>
