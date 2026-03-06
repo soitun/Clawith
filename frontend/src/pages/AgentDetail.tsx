@@ -511,15 +511,15 @@ export default function AgentDetail() {
     const [historyMsgs, setHistoryMsgs] = useState<any[]>([]);
     const [sessionsLoading, setSessionsLoading] = useState(false);
 
-    const fetchMySessions = async () => {
+    const fetchMySessions = async (silent = false) => {
         if (!id) return;
-        setSessionsLoading(true);
+        if (!silent) setSessionsLoading(true);
         try {
             const tkn = localStorage.getItem('token');
             const res = await fetch(`/api/agents/${id}/sessions?scope=mine`, { headers: { Authorization: `Bearer ${tkn}` } });
             if (res.ok) { const data = await res.json(); setSessions(data); return data; }
         } catch { }
-        setSessionsLoading(false);
+        if (!silent) setSessionsLoading(false);
         return [];
     };
 
@@ -720,8 +720,8 @@ export default function AgentDetail() {
                         if (last && last.role === 'assistant' && (last as any)._streaming) return [...prev.slice(0, -1), { role: 'assistant', content: d.content }];
                         return [...prev, { role: d.role, content: d.content }];
                     });
-                    // Refresh session list to update last_message_at
-                    fetchMySessions();
+                    // Silently refresh session list to update last_message_at (no loading spinner)
+                    fetchMySessions(true);
                 } else if (d.type === 'error' || d.type === 'quota_exceeded') {
                     setChatMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${d.content || d.detail || d.message || 'Request denied'}` }]);
                 } else {
