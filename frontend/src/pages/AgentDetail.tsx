@@ -958,7 +958,7 @@ export default function AgentDetail() {
                 <div className="page-header">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'var(--accent-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>A</div>
-                        <div>
+                        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
                             <h1 className="page-title">{agent.name}</h1>
                             <p className="page-subtitle" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <span className={`status-dot ${statusKey}`} />
@@ -987,9 +987,9 @@ export default function AgentDetail() {
                                     />
                                 ) : (
                                     <span
-                                        title="Click to edit"
+                                        title={agent.role_description || 'Click to edit'}
                                         onClick={() => { setRoleInput(agent.role_description || ''); setEditingRole(true); }}
-                                        style={{ cursor: 'text', borderBottom: '1px dashed transparent' }}
+                                        style={{ cursor: 'text', borderBottom: '1px dashed transparent', maxWidth: '38vw', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block', verticalAlign: 'middle' }}
                                         onMouseEnter={e => (e.currentTarget.style.borderBottomColor = 'var(--text-tertiary)')}
                                         onMouseLeave={e => (e.currentTarget.style.borderBottomColor = 'transparent')}
                                     >
