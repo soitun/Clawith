@@ -348,18 +348,23 @@ async def websocket_chat(
 
     Flow:
     1. Client connects with JWT token + optional session_id as query params
-    2. Server authenticates and checks agent access
-    3. If session_id provided, uses it; otherwise finds/creates the user's latest session
-    4. Client sends messages as JSON: {"content": "..."}
-    5. Server calls the agent's configured LLM and sends response back
-    6. Messages are persisted to chat_messages table under the session
+    2. Server accepts immediately so browser onopen fires quickly
+    3. Server authenticates and checks agent access
+    4. If session_id provided, uses it; otherwise finds/creates the user's latest session
+    5. Client sends messages as JSON: {"content": "..."}
+    6. Server calls the agent's configured LLM and sends response back
+    7. Messages are persisted to chat_messages table under the session
     """
+    # Accept immediately so browser sees onopen without waiting for DB setup
+    await websocket.accept()
+
     # Authenticate
     try:
         payload = decode_access_token(token)
         user_id = uuid.UUID(payload["sub"])
     except Exception:
-        await websocket.close(code=4001, reason="Authentication failed")
+        await websocket.send_json({"type": "error", "content": "Authentication failed"})
+        await websocket.close(code=4001)
         return
 
     # Verify access and load agent + model
@@ -375,7 +380,8 @@ async def websocket_chat(
             user = result.scalar_one_or_none()
             if not user:
                 print("[WS] User not found")
-                await websocket.close(code=4001, reason="User not found")
+                await websocket.send_json({"type": "error", "content": "User not found"})
+                await websocket.close(code=4001)
                 return
 
             print(f"[WS] Checking agent access for {agent_id}")
@@ -450,14 +456,17 @@ async def websocket_chat(
         print(f"[WS] Setup error: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
-        await websocket.close(code=1011, reason="Setup failed")
+        await websocket.send_json({"type": "error", "content": "Setup failed"})
+        await websocket.close(code=1011)
         return
 
     agent_id_str = str(agent_id)
-    await manager.connect(agent_id_str, websocket)
-    print(f"[WS] Connected! Agent={agent_name}")
+    if agent_id_str not in manager.active_connections:
+        manager.active_connections[agent_id_str] = []
+    manager.active_connections[agent_id_str].append(websocket)
+    print(f"[WS] Ready! Agent={agent_name}")
 
-    # Build conversation context from history (skip tool_call entries — LLM only accepts system/assistant/user/tool)
+    # Build conversation context from history
     conversation: list[dict] = []
     for msg in history_messages:
         if msg.role in ("tool_call",):
