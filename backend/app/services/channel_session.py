@@ -43,5 +43,9 @@ async def find_or_create_channel_session(
         )
         db.add(session)
         await db.flush()  # populate session.id
+    else:
+        # Re-attribute old sessions that were stored under creator_id / wrong user
+        if session.user_id != user_id:
+            session.user_id = user_id
 
     return session
