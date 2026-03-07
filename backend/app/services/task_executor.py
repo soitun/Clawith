@@ -33,6 +33,7 @@ async def execute_task(task_id: uuid.UUID, agent_id: uuid.UUID) -> None:
         await db.commit()
         task_title = task.title
         task_description = task.description or ""
+        task_type = task.type  # 'todo' or 'supervision'
 
     # Step 2: Load agent + model
     async with async_session() as db:
@@ -104,12 +105,25 @@ async def execute_task(task_id: uuid.UUID, agent_id: uuid.UUID) -> None:
         stdout, stderr = await proc.communicate()
 
         if proc.returncode != 0:
-            await _log_error(task_id, f"调用模型失败 (curl exit {proc.returncode})")
+            stderr_msg = stderr.decode().strip()[:200] if stderr else ''
+            await _log_error(task_id, f"调用模型失败 (curl exit {proc.returncode}) {stderr_msg}")
+            if task_type == 'supervision':
+                await _restore_supervision_status(task_id)
             return
 
-        data = json.loads(stdout.decode())
+        stdout_text = stdout.decode().strip()
+        if not stdout_text:
+            await _log_error(task_id, "LLM 返回空响应（可能网络超时或服务不可用）")
+            # Restore supervision task status
+            if task_type == 'supervision':
+                await _restore_supervision_status(task_id)
+            return
+
+        data = json.loads(stdout_text)
         if "error" in data:
             await _log_error(task_id, f"LLM 错误: {data['error'].get('message', str(data['error']))[:200]}")
+            if task_type == 'supervision':
+                await _restore_supervision_status(task_id)
             return
 
         reply = data["choices"][0]["message"]["content"]
@@ -118,6 +132,8 @@ async def execute_task(task_id: uuid.UUID, agent_id: uuid.UUID) -> None:
         error_msg = str(e) or repr(e)
         print(f"[TaskExec] Error: {error_msg}")
         await _log_error(task_id, f"执行出错: {error_msg[:150]}")
+        if task_type == 'supervision':
+            await _restore_supervision_status(task_id)
         return
 
     # Step 4: Save result and mark done
@@ -125,11 +141,16 @@ async def execute_task(task_id: uuid.UUID, agent_id: uuid.UUID) -> None:
         result = await db.execute(select(Task).where(Task.id == task_id))
         task = result.scalar_one_or_none()
         if task:
-            task.status = "done"
-            task.completed_at = datetime.now(timezone.utc)
-            db.add(TaskLog(task_id=task_id, content=f"✅ 任务完成\n\n{reply}"))
+            if task_type == 'supervision':
+                # Supervision tasks stay active; just log the result
+                task.status = "pending"
+                db.add(TaskLog(task_id=task_id, content=f"✅ 督办执行完成\n\n{reply}"))
+            else:
+                task.status = "done"
+                task.completed_at = datetime.now(timezone.utc)
+                db.add(TaskLog(task_id=task_id, content=f"✅ 任务完成\n\n{reply}"))
             await db.commit()
-            print(f"[TaskExec] Task {task_id} completed!")
+            print(f"[TaskExec] Task {task_id} {'logged' if task_type == 'supervision' else 'completed'}!")
 
 
 async def _log_error(task_id: uuid.UUID, message: str) -> None:
@@ -138,3 +159,13 @@ async def _log_error(task_id: uuid.UUID, message: str) -> None:
     async with async_session() as db:
         db.add(TaskLog(task_id=task_id, content=f"❌ {message}"))
         await db.commit()
+
+
+async def _restore_supervision_status(task_id: uuid.UUID) -> None:
+    """Restore supervision task status back to pending after a failed execution."""
+    async with async_session() as db:
+        result = await db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        if task and task.status == "doing":
+            task.status = "pending"
+            await db.commit()
