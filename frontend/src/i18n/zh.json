@@ -530,6 +530,14 @@
       "user": "用户",
       "action": "操作",
       "target": "对象"
+    },
+    "notificationBar": {
+      "title": "顶部通知条",
+      "enabled": "启用通知条",
+      "text": "通知文案",
+      "textPlaceholder": "输入通知条文案，如：🎉 v2.1 已发布！",
+      "description": "在页面顶部显示一行通知条，所有用户（含未登录用户）可见。",
+      "preview": "预览"
     }
   },
   "common": {

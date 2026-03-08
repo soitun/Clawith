@@ -87,6 +87,7 @@
   /* Notification bar */
   --notification-bar-bg: var(--accent-primary);
   --notification-bar-text: var(--accent-btn-text, #0a0a0f);
+  --notification-bar-close-hover: rgba(0, 0, 0, 0.15);
 }
 
 /* ─── Notification Bar ──────────────────────────────── */
@@ -137,7 +138,7 @@
 
 .notification-bar-close:hover {
   opacity: 1;
-  background: rgba(0, 0, 0, 0.1);
+  background: var(--notification-bar-close-hover);
 }
 
 /* Adjust sidebar and main content when notification bar is present */
@@ -188,6 +189,10 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+
+  /* Light mode: default accent is dark (#3a3a42), so text must be white */
+  --notification-bar-text: var(--accent-btn-text, #ffffff);
+  --notification-bar-close-hover: rgba(255, 255, 255, 0.2);
 }
 
 /* Light-mode overrides: primary button uses dark bg → white text */

@@ -520,6 +520,14 @@
       "user": "User",
       "action": "Action",
       "target": "Target"
+    },
+    "notificationBar": {
+      "title": "Notification Bar",
+      "enabled": "Enable notification bar",
+      "text": "Notification text",
+      "textPlaceholder": "e.g. 🎉 v2.1 released with new features!",
+      "description": "Display a notification bar at the top of the page, visible to all users.",
+      "preview": "Preview"
     }
   },
   "common": {

@@ -129,6 +129,7 @@ async def call_llm(
 
     # Load tools dynamically from DB
     tools_for_llm = await get_agent_tools_for_llm(agent_id) if agent_id else AGENT_TOOLS
+    print(f"[LLM-DBG] tools_for_llm count={len(tools_for_llm)}, names={[t['function']['name'] for t in tools_for_llm[:5]]}...", flush=True)
 
     api_messages = [{"role": "system", "content": system_prompt}]
     api_messages.extend(messages)
