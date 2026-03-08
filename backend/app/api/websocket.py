@@ -555,7 +555,7 @@ async def websocket_chat(
         import traceback
         traceback.print_exc()
         await websocket.send_json({"type": "error", "content": "Setup failed"})
-        await websocket.close(code=1011)
+        await websocket.close(code=4002)  # Config error — client should NOT retry
         return
 
     agent_id_str = str(agent_id)

@@ -273,12 +273,23 @@ async def get_session_messages(
     )
     messages = msgs_result.scalars().all()
 
+    # Resolve sender names for agent sessions
+    sender_cache: dict = {}
+    if session.source_channel == "agent":
+        from app.models.participant import Participant
+        for m in messages:
+            if m.participant_id and str(m.participant_id) not in sender_cache:
+                p_r = await db.execute(select(Participant.display_name).where(Participant.id == m.participant_id))
+                sender_cache[str(m.participant_id)] = p_r.scalar_one_or_none() or "Unknown"
+
     out = []
     for m in messages:
-        entry: dict = {"role": m.role, "content": m.content}
+        sender_name = sender_cache.get(str(m.participant_id)) if m.participant_id else None
+
         if m.role == "tool_call":
+            import json
+            entry: dict = {"role": m.role, "content": m.content}
             try:
-                import json
                 data = json.loads(m.content)
                 entry["content"] = ""
                 entry["toolName"] = data.get("name", "")
@@ -287,10 +298,78 @@ async def get_session_messages(
                 entry["toolResult"] = data.get("result", "")
             except Exception:
                 pass
-        # For agent-to-agent sessions, include sender name from Participant
-        if session.source_channel == "agent" and m.participant_id:
-            from app.models.participant import Participant
-            p_r = await db.execute(select(Participant.display_name).where(Participant.id == m.participant_id))
-            entry["sender_name"] = p_r.scalar_one_or_none() or "Unknown"
-        out.append(entry)
+            if sender_name:
+                entry["sender_name"] = sender_name
+            out.append(entry)
+            continue
+
+        # For agent sessions, parse inline tool_code blocks from assistant messages
+        if session.source_channel == "agent" and m.role == "assistant" and "```tool_code" in (m.content or ""):
+            parts = _split_inline_tools(m.content)
+            for part in parts:
+                if sender_name:
+                    part["sender_name"] = sender_name
+                out.append(part)
+        else:
+            entry = {"role": m.role, "content": m.content}
+            if sender_name:
+                entry["sender_name"] = sender_name
+            out.append(entry)
+
     return out
+
+
+import re
+
+def _split_inline_tools(content: str) -> list[dict]:
+    """Parse assistant content containing inline ```tool_code blocks.
+
+    Splits into alternating text segments and tool_call entries.
+    Format: ```tool_code\ntool_name\n``` ```json\n{args}\n```
+    """
+    # Pattern: ```tool_code\n<name>\n``` optionally followed by ```json\n<args>\n```
+    pattern = re.compile(
+        r'```tool_code\s*\n\s*(\w+)\s*\n```'        # tool name
+        r'(?:\s*```json\s*\n(.*?)\n```)?',            # optional JSON args
+        re.DOTALL
+    )
+
+    parts: list[dict] = []
+    last_end = 0
+
+    for match in pattern.finditer(content):
+        # Text before this tool call
+        text_before = content[last_end:match.start()].strip()
+        if text_before:
+            parts.append({"role": "assistant", "content": text_before})
+
+        tool_name = match.group(1)
+        args_str = match.group(2)
+        tool_args = None
+        if args_str:
+            try:
+                import json
+                tool_args = json.loads(args_str.strip())
+            except Exception:
+                tool_args = {"raw": args_str.strip()}
+
+        parts.append({
+            "role": "tool_call",
+            "content": "",
+            "toolName": tool_name,
+            "toolArgs": tool_args,
+            "toolStatus": "done",
+            "toolResult": "",
+        })
+        last_end = match.end()
+
+    # Trailing text after last tool
+    trailing = content[last_end:].strip()
+    if trailing:
+        parts.append({"role": "assistant", "content": trailing})
+
+    # If no matches found, return the whole content as-is
+    if not parts:
+        parts.append({"role": "assistant", "content": content})
+
+    return parts

@@ -749,9 +749,9 @@ export default function AgentDetail() {
             const ws = new WebSocket(`${protocol}//${window.location.host}/ws/chat/${id}?token=${token}${sessionParam}`);
             ws.onopen = () => { if (cancelled) { ws.close(); return; } setWsConnected(true); wsRef.current = ws; };
             ws.onclose = (e) => {
-                if (e.code === 4003) {
-                    // Agent expired — stop reconnecting
-                    setAgentExpired(true);
+                if (e.code === 4003 || e.code === 4002) {
+                    // 4003 = Agent expired, 4002 = Config error (no model, setup failed)
+                    if (e.code === 4003) setAgentExpired(true);
                     setWsConnected(false);
                     return;
                 }
@@ -795,11 +795,16 @@ export default function AgentDetail() {
                     fetchMySessions(true);
                 } else if (d.type === 'error' || d.type === 'quota_exceeded') {
                     const msg = d.content || d.detail || d.message || 'Request denied';
-                    setChatMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${msg}` }]);
-                    // Agent expired — permanently stop reconnecting
-                    if (msg.includes('expired')) {
+                    // Only add message if not a duplicate of the last one
+                    setChatMessages(prev => {
+                        const last = prev[prev.length - 1];
+                        if (last && last.role === 'assistant' && last.content === `⚠️ ${msg}`) return prev;
+                        return [...prev, { role: 'assistant', content: `⚠️ ${msg}` }];
+                    });
+                    // Permanent errors — stop reconnecting
+                    if (msg.includes('expired') || msg.includes('Setup failed') || msg.includes('no LLM model') || msg.includes('No model')) {
                         cancelled = true;
-                        setAgentExpired(true);
+                        if (msg.includes('expired')) setAgentExpired(true);
                     }
                 } else {
                     setChatMessages(prev => [...prev, { role: d.role, content: d.content }]);
