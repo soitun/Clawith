@@ -520,8 +520,24 @@ export default function AgentDetail() {
         enabled: !!id && activeTab === 'aware',
     });
 
+    // ── Aware tab data: pulse sessions (trigger monologues) ──
+    const { data: pulseSessions = [] } = useQuery({
+        queryKey: ['pulse-sessions', id],
+        queryFn: async () => {
+            const tkn = localStorage.getItem('token');
+            const res = await fetch(`/api/agents/${id}/sessions?scope=all`, { headers: { Authorization: `Bearer ${tkn}` } });
+            if (!res.ok) return [];
+            const all = await res.json();
+            return all.filter((s: any) => s.source_channel === 'trigger').slice(0, 20);
+        },
+        enabled: !!id && activeTab === 'aware',
+        refetchInterval: activeTab === 'aware' ? 10000 : false,
+    });
+
     // ── Aware tab state ──
     const [expandedFocus, setExpandedFocus] = useState<string | null>(null);
+    const [expandedReflection, setExpandedReflection] = useState<string | null>(null);
+    const [reflectionMessages, setReflectionMessages] = useState<Record<string, any[]>>({});
 
     const { data: soulContent } = useQuery({
         queryKey: ['file', id, 'soul.md'],
@@ -1556,6 +1572,9 @@ export default function AgentDetail() {
                         if (trig.type === 'on_message') {
                             return `On message from ${trig.config?.from_agent_name || trig.config?.from_user_name || 'unknown'}`;
                         }
+                        if (trig.type === 'webhook') {
+                            return `Webhook${trig.config?.token ? ` (${trig.config.token.substring(0, 6)}...)` : ''}`;
+                        }
                         return trig.type;
                     };
 
@@ -1842,6 +1861,150 @@ export default function AgentDetail() {
                                     <summary style={{ fontSize: '11px', color: 'var(--text-tertiary)', cursor: 'pointer' }}>{t('agent.aware.viewRawMarkdown')}</summary>
                                     <pre style={{ fontSize: '11px', marginTop: '8px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '6px', whiteSpace: 'pre-wrap', maxHeight: '300px', overflow: 'auto' }}>{raw}</pre>
                                 </details>
+                            )}
+
+                            {/* ── Reflections (Pulse Sessions) ── */}
+                            {pulseSessions.length > 0 && (
+                                <div style={{ marginTop: '24px' }}>
+                                    <div style={{ marginBottom: '12px' }}>
+                                        <h4 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>{t('agent.aware.reflections')}</h4>
+                                        <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>{t('agent.aware.reflectionsDesc')}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {pulseSessions.map((session: any) => {
+                                            const isExpanded = expandedReflection === session.id;
+                                            const msgs = reflectionMessages[session.id] || [];
+                                            return (
+                                                <div key={session.id} style={{
+                                                    borderRadius: '8px',
+                                                    border: '1px solid var(--border-subtle)',
+                                                    overflow: 'hidden',
+                                                    background: 'var(--bg-primary)',
+                                                }}>
+                                                    <div
+                                                        onClick={async () => {
+                                                            if (isExpanded) {
+                                                                setExpandedReflection(null);
+                                                                return;
+                                                            }
+                                                            setExpandedReflection(session.id);
+                                                            // Load messages if not cached
+                                                            if (!reflectionMessages[session.id]) {
+                                                                try {
+                                                                    const tkn = localStorage.getItem('token');
+                                                                    const res = await fetch(`/api/agents/${id}/sessions/${session.id}/messages`, {
+                                                                        headers: { Authorization: `Bearer ${tkn}` },
+                                                                    });
+                                                                    if (res.ok) {
+                                                                        const data = await res.json();
+                                                                        setReflectionMessages(prev => ({ ...prev, [session.id]: data }));
+                                                                    }
+                                                                } catch { /* ignore */ }
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            padding: '10px 16px',
+                                                            display: 'flex', alignItems: 'center', gap: '10px',
+                                                            cursor: 'pointer', transition: 'background 0.15s',
+                                                        }}
+                                                        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-secondary)')}
+                                                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                                                    >
+                                                        <div style={{
+                                                            width: '6px', height: '6px', borderRadius: '50%',
+                                                            background: 'var(--accent-primary)', flexShrink: 0,
+                                                        }} />
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{ fontSize: '12px', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                                {(session.title || 'Trigger execution').replace(/^🤖\s*/, '')}
+                                                            </div>
+                                                            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                                                                {new Date(session.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                                {session.message_count > 0 && ` · ${session.message_count} msg`}
+                                                            </div>
+                                                        </div>
+                                                        <span style={{
+                                                            fontSize: '11px', color: 'var(--text-tertiary)',
+                                                            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                                                            transition: 'transform 0.15s',
+                                                        }}>&#9654;</span>
+                                                    </div>
+                                                    {isExpanded && (
+                                                        <div style={{ padding: '0 16px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+                                                            {msgs.length === 0 ? (
+                                                                <div style={{ padding: '12px 0', fontSize: '12px', color: 'var(--text-tertiary)' }}>Loading...</div>
+                                                            ) : (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                                                                    {msgs.map((msg: any, mi: number) => {
+                                                                        if (msg.role === 'tool_call') {
+                                                                            let parsed: any = {};
+                                                                            try { parsed = JSON.parse(msg.content || '{}'); } catch { }
+                                                                            return (
+                                                                                <div key={mi} style={{
+                                                                                    padding: '6px 10px', borderRadius: '6px',
+                                                                                    background: 'var(--bg-secondary)',
+                                                                                    borderLeft: '2px solid var(--accent-primary)',
+                                                                                    fontSize: '11px',
+                                                                                }}>
+                                                                                    <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{parsed.name || 'tool'}</span>
+                                                                                    <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px' }}>
+                                                                                        {JSON.stringify(parsed.args || {}).substring(0, 100)}
+                                                                                    </span>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        if (msg.role === 'tool_result') {
+                                                                            let parsed: any = {};
+                                                                            try { parsed = JSON.parse(msg.content || '{}'); } catch { }
+                                                                            return (
+                                                                                <div key={mi} style={{
+                                                                                    padding: '6px 10px', borderRadius: '6px',
+                                                                                    background: 'var(--bg-secondary)',
+                                                                                    borderLeft: '2px solid var(--success, #10b981)',
+                                                                                    fontSize: '11px', color: 'var(--text-secondary)',
+                                                                                    maxHeight: '100px', overflow: 'auto',
+                                                                                }}>
+                                                                                    <span style={{ fontWeight: 500 }}>{parsed.name || 'result'}:</span>{' '}
+                                                                                    <span>{(parsed.result || '').substring(0, 200)}</span>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        if (msg.role === 'assistant') {
+                                                                            return (
+                                                                                <div key={mi} style={{
+                                                                                    padding: '8px 10px', borderRadius: '6px',
+                                                                                    background: 'var(--bg-secondary)',
+                                                                                    fontSize: '12px', color: 'var(--text-primary)',
+                                                                                    whiteSpace: 'pre-wrap', lineHeight: '1.5',
+                                                                                    maxHeight: '200px', overflow: 'auto',
+                                                                                }}>
+                                                                                    {msg.content}
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        if (msg.role === 'user') {
+                                                                            return (
+                                                                                <div key={mi} style={{
+                                                                                    padding: '6px 10px', borderRadius: '6px',
+                                                                                    background: 'rgba(var(--accent-primary-rgb, 99,102,241), 0.08)',
+                                                                                    fontSize: '11px', color: 'var(--text-secondary)',
+                                                                                    whiteSpace: 'pre-wrap', maxHeight: '100px', overflow: 'auto',
+                                                                                }}>
+                                                                                    {(msg.content || '').substring(0, 300)}
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        return null;
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
                             )}
                         </div>
                     );

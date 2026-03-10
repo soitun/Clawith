@@ -113,7 +113,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "set_trigger",
-            "description": "Set a new trigger to wake yourself up at a specific time or condition. Use this to schedule future actions, monitor changes, or wait for messages. The trigger will fire and invoke you with the reason text as context. Trigger types: 'cron' (recurring schedule), 'once' (fire once at a time), 'interval' (every N minutes), 'poll' (HTTP monitoring), 'on_message' (when another agent or a human user replies — use from_agent_name for agents, or from_user_name for human users on Feishu/Slack/Discord).",
+            "description": "Set a new trigger to wake yourself up at a specific time or condition. Use this to schedule future actions, monitor changes, or wait for messages. The trigger will fire and invoke you with the reason text as context. Trigger types: 'cron' (recurring schedule), 'once' (fire once at a time), 'interval' (every N minutes), 'poll' (HTTP monitoring), 'on_message' (when another agent or a human user replies — use from_agent_name for agents, or from_user_name for human users on Feishu/Slack/Discord), 'webhook' (receive external HTTP POST — system generates a unique URL, give it to the user so they can configure it in external services like GitHub, Grafana, etc.).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -123,12 +123,12 @@ AGENT_TOOLS = [
                     },
                     "type": {
                         "type": "string",
-                        "enum": ["cron", "once", "interval", "poll", "on_message"],
+                        "enum": ["cron", "once", "interval", "poll", "on_message", "webhook"],
                         "description": "Trigger type",
                     },
                     "config": {
                         "type": "object",
-                        "description": "Type-specific config. cron: {\"expr\": \"0 9 * * *\"}. once: {\"at\": \"2026-03-10T09:00:00+08:00\"}. interval: {\"minutes\": 30}. poll: {\"url\": \"...\", \"json_path\": \"$.status\", \"fire_on\": \"change\", \"interval_min\": 5}. on_message: {\"from_agent_name\": \"Morty\"} or {\"from_user_name\": \"张三\"} (for human users on Feishu/Slack/Discord)",
+                        "description": "Type-specific config. cron: {\"expr\": \"0 9 * * *\"}. once: {\"at\": \"2026-03-10T09:00:00+08:00\"}. interval: {\"minutes\": 30}. poll: {\"url\": \"...\", \"json_path\": \"$.status\", \"fire_on\": \"change\", \"interval_min\": 5}. on_message: {\"from_agent_name\": \"Morty\"} or {\"from_user_name\": \"张三\"} (for human users on Feishu/Slack/Discord). webhook: {\"secret\": \"optional_hmac_secret\"} (system auto-generates the URL)",
                     },
                     "reason": {
                         "type": "string",
@@ -2259,7 +2259,7 @@ async def _import_mcp_server(agent_id: uuid.UUID, arguments: dict) -> str:
 # ─── Trigger Management Handlers (Pulse Engine) ────────────────────
 
 MAX_TRIGGERS_PER_AGENT = 20
-VALID_TRIGGER_TYPES = {"cron", "once", "interval", "poll", "on_message"}
+VALID_TRIGGER_TYPES = {"cron", "once", "interval", "poll", "on_message", "webhook"}
 
 
 async def _handle_set_trigger(agent_id: uuid.UUID, arguments: dict) -> str:
@@ -2301,6 +2301,11 @@ async def _handle_set_trigger(agent_id: uuid.UUID, arguments: dict) -> str:
     elif ttype == "on_message":
         if not config.get("from_agent_name") and not config.get("from_user_name"):
             return "❌ on_message trigger requires config.from_agent_name (for agents) or config.from_user_name (for human users on Feishu/Slack/Discord)"
+    elif ttype == "webhook":
+        # Auto-generate a unique token for the webhook URL
+        import secrets
+        token = secrets.token_urlsafe(8)  # ~11 chars, URL-safe
+        config["token"] = token
 
     try:
         async with async_session() as db:
@@ -2358,6 +2363,16 @@ async def _handle_set_trigger(agent_id: uuid.UUID, arguments: dict) -> str:
             }, agent_id=agent_id)
         except Exception:
             pass
+
+        # Return webhook URL for webhook triggers
+        if ttype == "webhook":
+            from app.config import get_settings
+            settings = get_settings()
+            base = getattr(settings, 'PUBLIC_URL', '') or ''
+            if not base:
+                base = 'https://try.clawith.ai'  # fallback
+            webhook_url = f"{base.rstrip('/')}/api/webhooks/t/{config['token']}"
+            return f"✅ Webhook trigger '{name}' created.\n\nWebhook URL: {webhook_url}\n\nTell the user to configure this URL in their external service (e.g. GitHub, Grafana). When the service sends a POST to this URL, you will be woken up with the payload as context."
 
         return f"✅ Trigger '{name}' created ({ttype}). It will fire according to your config and wake you up with the reason as context."
 
