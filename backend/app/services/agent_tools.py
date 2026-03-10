@@ -2309,6 +2309,12 @@ async def _handle_set_trigger(agent_id: uuid.UUID, arguments: dict) -> str:
 
     try:
         async with async_session() as db:
+            # Load agent to get per-agent trigger limit
+            from app.models.agent import Agent as _AgentModel
+            _a_result = await db.execute(select(_AgentModel).where(_AgentModel.id == agent_id))
+            _agent_obj = _a_result.scalar_one_or_none()
+            agent_max_triggers = (_agent_obj.max_triggers if _agent_obj else None) or MAX_TRIGGERS_PER_AGENT
+
             # Check max triggers
             from sqlalchemy import func as sa_func
             result = await db.execute(
@@ -2318,8 +2324,8 @@ async def _handle_set_trigger(agent_id: uuid.UUID, arguments: dict) -> str:
                 )
             )
             count = result.scalar() or 0
-            if count >= MAX_TRIGGERS_PER_AGENT:
-                return f"❌ Maximum trigger limit reached ({MAX_TRIGGERS_PER_AGENT}). Cancel some triggers first."
+            if count >= agent_max_triggers:
+                return f"❌ Maximum trigger limit reached ({agent_max_triggers}). Cancel some triggers first."
 
             # Check for duplicate name
             result = await db.execute(

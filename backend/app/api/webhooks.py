@@ -38,12 +38,15 @@ async def receive_webhook(token: str, request: Request):
     - Rate limiting (5 requests/minute per token)
     - Payload size limit (64KB)
     """
-    # Rate limiting
+    # Rate limiting — use per-agent limit if available
     now = time.time()
     hits = _rate_hits.get(token, [])
     hits = [t for t in hits if now - t < 60]  # keep last 60 seconds
-    if len(hits) >= RATE_LIMIT:
-        logger.warning(f"Webhook rate limit exceeded for token {token[:8]}...")
+
+    # We'll check per-agent rate limit after finding the trigger below.
+    # For now, apply a generous global ceiling to prevent memory abuse.
+    if len(hits) >= 60:  # hard ceiling: 60/min regardless of config
+        logger.warning(f"Webhook hard rate limit exceeded for token {token[:8]}...")
         return JSONResponse({"ok": True}, status_code=429)
     hits.append(now)
     _rate_hits[token] = hits
@@ -75,6 +78,16 @@ async def receive_webhook(token: str, request: Request):
         if not target:
             # Return 200 OK to avoid leaking whether the token exists
             return JSONResponse({"ok": True})
+
+        # Per-agent rate limit check
+        from app.models.agent import Agent
+        agent_result = await db.execute(select(Agent).where(Agent.id == target.agent_id))
+        agent_obj = agent_result.scalar_one_or_none()
+        agent_rate_limit = (agent_obj.webhook_rate_limit if agent_obj else None) or RATE_LIMIT
+        # Re-check hits against agent-specific limit (hits already collected above)
+        if len(hits) > agent_rate_limit:  # > because we already appended current hit
+            logger.warning(f"Webhook per-agent rate limit ({agent_rate_limit}/min) for token {token[:8]}...")
+            return JSONResponse({"ok": True}, status_code=429)
 
         cfg = target.config or {}
 

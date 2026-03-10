@@ -716,6 +716,9 @@ export default function AgentDetail() {
         max_tool_rounds: 50,
         max_tokens_per_day: '' as string | number,
         max_tokens_per_month: '' as string | number,
+        max_triggers: 20,
+        min_poll_interval_min: 5,
+        webhook_rate_limit: 5,
     });
     const [settingsSaving, setSettingsSaving] = useState(false);
     const [settingsSaved, setSettingsSaved] = useState(false);
@@ -732,6 +735,9 @@ export default function AgentDetail() {
                 max_tool_rounds: (agent as any).max_tool_rounds ?? 50,
                 max_tokens_per_day: agent.max_tokens_per_day || '',
                 max_tokens_per_month: agent.max_tokens_per_month || '',
+                max_triggers: (agent as any).max_triggers ?? 20,
+                min_poll_interval_min: (agent as any).min_poll_interval_min ?? 5,
+                webhook_rate_limit: (agent as any).webhook_rate_limit ?? 5,
             });
             settingsInitRef.current = true;
         }
@@ -2636,7 +2642,10 @@ export default function AgentDetail() {
                             settingsForm.context_window_size !== (agent?.context_window_size ?? 100) ||
                             settingsForm.max_tool_rounds !== ((agent as any)?.max_tool_rounds ?? 50) ||
                             String(settingsForm.max_tokens_per_day) !== String(agent?.max_tokens_per_day || '') ||
-                            String(settingsForm.max_tokens_per_month) !== String(agent?.max_tokens_per_month || '')
+                            String(settingsForm.max_tokens_per_month) !== String(agent?.max_tokens_per_month || '') ||
+                            settingsForm.max_triggers !== ((agent as any)?.max_triggers ?? 20) ||
+                            settingsForm.min_poll_interval_min !== ((agent as any)?.min_poll_interval_min ?? 5) ||
+                            settingsForm.webhook_rate_limit !== ((agent as any)?.webhook_rate_limit ?? 5)
                         );
 
                         const handleSaveSettings = async () => {
@@ -2650,6 +2659,9 @@ export default function AgentDetail() {
                                     max_tool_rounds: settingsForm.max_tool_rounds,
                                     max_tokens_per_day: settingsForm.max_tokens_per_day ? Number(settingsForm.max_tokens_per_day) : null,
                                     max_tokens_per_month: settingsForm.max_tokens_per_month ? Number(settingsForm.max_tokens_per_month) : null,
+                                    max_triggers: settingsForm.max_triggers,
+                                    min_poll_interval_min: settingsForm.min_poll_interval_min,
+                                    webhook_rate_limit: settingsForm.webhook_rate_limit,
                                 } as any);
                                 queryClient.invalidateQueries({ queryKey: ['agent', id] });
                                 settingsInitRef.current = false;
@@ -2788,6 +2800,74 @@ export default function AgentDetail() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Trigger Limits */}
+                                {(() => {
+                                    const isChinese = i18n.language?.startsWith('zh');
+                                    return (
+                                        <div className="card" style={{ marginBottom: '12px' }}>
+                                            <h4 style={{ marginBottom: '4px' }}>{isChinese ? '触发器限制' : 'Trigger Limits'}</h4>
+                                            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+                                                {isChinese
+                                                    ? '控制该 Agent 可以创建的触发器数量和行为限制'
+                                                    : 'Limit how many triggers this agent can create and their behavior'}
+                                            </p>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>
+                                                        {isChinese ? '最大触发器数' : 'Max Triggers'}
+                                                    </label>
+                                                    <input
+                                                        className="input"
+                                                        type="number"
+                                                        min={1}
+                                                        max={100}
+                                                        value={settingsForm.max_triggers}
+                                                        onChange={(e) => setSettingsForm(f => ({ ...f, max_triggers: Math.max(1, Math.min(100, parseInt(e.target.value) || 20)) }))}
+                                                        style={{ width: '100%' }}
+                                                    />
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                                                        {isChinese ? 'Agent 最多可同时拥有的触发器数量' : 'Max active triggers the agent can have'}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>
+                                                        {isChinese ? 'Poll 最短间隔 (分钟)' : 'Min Poll Interval (min)'}
+                                                    </label>
+                                                    <input
+                                                        className="input"
+                                                        type="number"
+                                                        min={1}
+                                                        max={60}
+                                                        value={settingsForm.min_poll_interval_min}
+                                                        onChange={(e) => setSettingsForm(f => ({ ...f, min_poll_interval_min: Math.max(1, Math.min(60, parseInt(e.target.value) || 5)) }))}
+                                                        style={{ width: '100%' }}
+                                                    />
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                                                        {isChinese ? '定时轮询外部接口的最短间隔' : 'Minimum interval for polling external URLs'}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '6px' }}>
+                                                        {isChinese ? 'Webhook 频率限制 (次/分钟)' : 'Webhook Rate Limit (/min)'}
+                                                    </label>
+                                                    <input
+                                                        className="input"
+                                                        type="number"
+                                                        min={1}
+                                                        max={60}
+                                                        value={settingsForm.webhook_rate_limit}
+                                                        onChange={(e) => setSettingsForm(f => ({ ...f, webhook_rate_limit: Math.max(1, Math.min(60, parseInt(e.target.value) || 5)) }))}
+                                                        style={{ width: '100%' }}
+                                                    />
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                                                        {isChinese ? '外部系统每分钟最多可调用的 Webhook 次数' : 'Max webhook calls per minute from external services'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Welcome Message */}
                                 {(() => {
