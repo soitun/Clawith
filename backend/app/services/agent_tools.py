@@ -74,7 +74,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Write or update a file in the workspace. Can update memory/memory.md, agenda.md, task_history.md, create documents in workspace/, create skills in skills/.",
+            "description": "Write or update a file in the workspace. Can update memory/memory.md, focus.md, task_history.md, create documents in workspace/, create skills in skills/.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -134,9 +134,9 @@ AGENT_TOOLS = [
                         "type": "string",
                         "description": "What you should do when this trigger fires. This will be shown to you as context when you wake up.",
                     },
-                    "agenda_ref": {
+                    "focus_ref": {
                         "type": "string",
-                        "description": "Optional: which agenda item this trigger relates to",
+                        "description": "Optional: identifier of the focus item in focus.md that this trigger relates to (use the checklist identifier, e.g. 'daily_news_check')",
                     },
                 },
                 "required": ["name", "type", "config", "reason"],
@@ -2270,7 +2270,7 @@ async def _handle_set_trigger(agent_id: uuid.UUID, arguments: dict) -> str:
     ttype = arguments.get("type", "").strip()
     config = arguments.get("config", {})
     reason = arguments.get("reason", "").strip()
-    agenda_ref = arguments.get("agenda_ref", "")
+    focus_ref = arguments.get("focus_ref", "")
 
     if not name:
         return "❌ Missing required argument 'name'"
@@ -2343,7 +2343,7 @@ async def _handle_set_trigger(agent_id: uuid.UUID, arguments: dict) -> str:
                     existing.type = ttype
                     existing.config = config
                     existing.reason = reason
-                    existing.agenda_ref = agenda_ref or None
+                    existing.focus_ref = focus_ref or None
                     existing.is_enabled = True
                     existing.fire_count = 0
                     existing.last_fired_at = None
@@ -2356,7 +2356,7 @@ async def _handle_set_trigger(agent_id: uuid.UUID, arguments: dict) -> str:
                 type=ttype,
                 config=config,
                 reason=reason,
-                agenda_ref=agenda_ref or None,
+                focus_ref=focus_ref or None,
             )
             db.add(trigger)
             await db.commit()

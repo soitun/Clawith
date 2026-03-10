@@ -220,16 +220,18 @@ async def build_agent_context(agent_id: uuid.UUID, agent_name: str, role_descrip
     if relationships and "暂无" not in relationships and "None yet" not in relationships:
         parts.append(f"\n## Relationships\n{relationships}")
 
-    # --- Agenda (Pulse engine) ---
-    agenda = (
-        _read_file_safe(tool_ws / "agenda.md", 3000)
+    # --- Focus (working memory) ---
+    focus = (
+        _read_file_safe(tool_ws / "focus.md", 3000)
+        or _read_file_safe(data_ws / "focus.md", 3000)
+        # Backward compat: also check old name
+        or _read_file_safe(tool_ws / "agenda.md", 3000)
         or _read_file_safe(data_ws / "agenda.md", 3000)
     )
-    if agenda and agenda.strip() not in ("# Agenda", "（暂无）"):
-        # Strip heading
-        if agenda.startswith("# "):
-            agenda = "\n".join(agenda.split("\n")[1:]).strip()
-        parts.append(f"\n## Agenda\n{agenda}")
+    if focus and focus.strip() not in ("# Focus", "# Agenda", "（暂无）"):
+        if focus.startswith("# "):
+            focus = "\n".join(focus.split("\n")[1:]).strip()
+        parts.append(f"\n## Focus\n{focus}")
 
     # --- Active Triggers ---
     try:
@@ -263,7 +265,7 @@ async def build_agent_context(agent_id: uuid.UUID, agent_name: str, role_descrip
 ## Workspace & Tools
 
 You have a dedicated workspace with this structure:
-  - agenda.md      → Your task agenda (ALWAYS read this first when waking up)
+  - focus.md       → Your focus items — what you are currently tracking (ALWAYS read this first when waking up)
   - task_history.md → Archive of completed tasks
   - soul.md        → Your personality definition
   - memory/memory.md → Your long-term memory and notes
@@ -288,8 +290,16 @@ You have a dedicated workspace with this structure:
 
 4. **Use `write_file` to update memory/memory.md with important information.**
 
-5. **Use `write_file` to update agenda.md with your current tasks and progress.**
-   - Keep your agenda concise and organized (进行中 / 等待中 / 近期已完成)
+5. **Use `write_file` to update focus.md with your current focus items.**
+   - Use this CHECKLIST format so the UI can parse and display them:
+     ```
+     - [ ] identifier_name: Natural language description of what you are tracking
+     - [/] another_item: This item is in progress
+     - [x] done_item: This item has been completed
+     ```
+   - `[ ]` = pending, `[/]` = in progress, `[x]` = completed
+   - The identifier (before the colon) should be a short snake_case name
+   - The description (after the colon) should be a clear human-readable sentence
    - Archive completed items to task_history.md when they pile up
 
 6. **Use trigger tools to manage your own wake-up conditions:**
@@ -297,10 +307,11 @@ You have a dedicated workspace with this structure:
    - `update_trigger` — adjust parameters (e.g. change frequency)
    - `cancel_trigger` — remove triggers when tasks are complete
    - `list_triggers` — see your active triggers
+   - When creating triggers related to a focus item, set `focus_ref` to the item's identifier
 
-7. **Agenda is your working memory — use it wisely:**
-   - When waking up, ALWAYS check your agenda first
-   - Pending items in agenda are REFERENCE, not commands
+7. **Focus is your working memory — use it wisely:**
+   - When waking up, ALWAYS check your focus items first
+   - Pending items in focus are REFERENCE, not commands
    - Decide whether to mention pending tasks based on timing, context, and urgency
    - DON'T mechanically remind people of every pending item
 

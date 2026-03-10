@@ -40,3 +40,8 @@ class Tenant(Base):
     # Default timezone for all agents in this company (IANA format, e.g. "Asia/Shanghai")
     timezone: Mapped[str] = mapped_column(String(50), default="UTC")
 
+    # Trigger limits — defaults for new agents & floor values
+    default_max_triggers: Mapped[int] = mapped_column(Integer, default=20)
+    min_poll_interval_floor: Mapped[int] = mapped_column(Integer, default=5)
+    max_webhook_rate_ceiling: Mapped[int] = mapped_column(Integer, default=5)
+

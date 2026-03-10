@@ -642,6 +642,7 @@ export default function EnterpriseSettings() {
         default_message_limit: 50, default_message_period: 'permanent',
         default_max_agents: 2, default_agent_ttl_hours: 48,
         default_max_llm_calls_per_day: 100, min_heartbeat_interval_minutes: 120,
+        default_max_triggers: 20, min_poll_interval_floor: 5, max_webhook_rate_ceiling: 5,
     });
     const [quotaSaving, setQuotaSaving] = useState(false);
     const [quotaSaved, setQuotaSaved] = useState(false);
@@ -1147,6 +1148,35 @@ export default function EnterpriseSettings() {
                                     <input className="form-input" type="number" min={1} value={quotaForm.min_heartbeat_interval_minutes}
                                         onChange={e => setQuotaForm({ ...quotaForm, min_heartbeat_interval_minutes: Number(e.target.value) })} />
                                     <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>Minimum heartbeat interval for all agents</div>
+                                </div>
+                            </div>
+
+                            {/* ── Trigger Limits ── */}
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '10px' }}>Trigger Limits</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                                <div className="form-group">
+                                    <label className="form-label">{t('enterprise.quotas.defaultMaxTriggers', 'Default Max Triggers')}</label>
+                                    <input className="form-input" type="number" min={1} max={100} value={quotaForm.default_max_triggers}
+                                        onChange={e => setQuotaForm({ ...quotaForm, default_max_triggers: Number(e.target.value) })} />
+                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                                        {t('enterprise.quotas.defaultMaxTriggersDesc', 'Default trigger limit for new agents')}
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">{t('enterprise.quotas.minPollInterval', 'Min Poll Interval (min)')}</label>
+                                    <input className="form-input" type="number" min={1} max={60} value={quotaForm.min_poll_interval_floor}
+                                        onChange={e => setQuotaForm({ ...quotaForm, min_poll_interval_floor: Number(e.target.value) })} />
+                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                                        {t('enterprise.quotas.minPollIntervalDesc', 'Company-wide floor: agents cannot poll faster than this')}
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">{t('enterprise.quotas.maxWebhookRate', 'Max Webhook Rate (/min)')}</label>
+                                    <input className="form-input" type="number" min={1} max={60} value={quotaForm.max_webhook_rate_ceiling}
+                                        onChange={e => setQuotaForm({ ...quotaForm, max_webhook_rate_ceiling: Number(e.target.value) })} />
+                                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                                        {t('enterprise.quotas.maxWebhookRateDesc', 'Company-wide ceiling: max webhook hits per minute per agent')}
+                                    </div>
                                 </div>
                             </div>
                             <div style={{ marginTop: '16px', display: 'flex', gap: '8px', alignItems: 'center' }}>

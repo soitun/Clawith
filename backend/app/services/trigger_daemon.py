@@ -388,8 +388,8 @@ async def _invoke_agent_for_triggers(agent_id: uuid.UUID, triggers: list[AgentTr
             trigger_names = []
             for t in triggers:
                 part = f"触发器：{t.name} ({t.type})\n原因：{t.reason}"
-                if t.agenda_ref:
-                    part += f"\n关联 agenda：{t.agenda_ref}"
+                if t.focus_ref:
+                    part += f"\n关联 Focus：{t.focus_ref}"
                 # Include matched message for on_message triggers
                 cfg = t.config or {}
                 if t.type == "on_message" and cfg.get("_matched_message"):

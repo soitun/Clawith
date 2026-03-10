@@ -506,10 +506,10 @@ export default function AgentDetail() {
         refetchInterval: activeTab === 'aware' ? 5000 : false,
     });
 
-    // ── Aware tab data: agenda.md ──
-    const { data: agendaFile } = useQuery({
-        queryKey: ['file', id, 'agenda.md'],
-        queryFn: () => fileApi.read(id!, 'agenda.md').catch(() => null),
+    // ── Aware tab data: focus.md ──
+    const { data: focusFile } = useQuery({
+        queryKey: ['file', id, 'focus.md'],
+        queryFn: () => fileApi.read(id!, 'focus.md').catch(() => null),
         enabled: !!id && activeTab === 'aware',
     });
 
@@ -1520,8 +1520,8 @@ export default function AgentDetail() {
 
                 {/* ── Aware Tab ── */}
                 {activeTab === 'aware' && (() => {
-                    // Parse agenda.md into focus items with multi-line descriptions
-                    const raw = agendaFile?.content || '';
+                    // Parse focus.md into focus items with multi-line descriptions
+                    const raw = focusFile?.content || '';
                     const lines = raw.split('\n');
                     const focusItems: { id: string; name: string; description: string; done: boolean; inProgress: boolean }[] = [];
                     let currentItem: any = null;
@@ -1584,23 +1584,23 @@ export default function AgentDetail() {
                         return trig.type;
                     };
 
-                    // Group triggers by agenda_ref
+                    // Group triggers by focus_ref
                     const triggersByFocus: Record<string, any[]> = {};
                     const standaloneTriggers: any[] = [];
                     for (const trig of awareTriggers) {
-                        if (trig.agenda_ref && focusItems.some(f => f.name === trig.agenda_ref)) {
-                            if (!triggersByFocus[trig.agenda_ref]) triggersByFocus[trig.agenda_ref] = [];
-                            triggersByFocus[trig.agenda_ref].push(trig);
+                        if (trig.focus_ref && focusItems.some(f => f.name === trig.focus_ref)) {
+                            if (!triggersByFocus[trig.focus_ref]) triggersByFocus[trig.focus_ref] = [];
+                            triggersByFocus[trig.focus_ref].push(trig);
                         } else {
                             standaloneTriggers.push(trig);
                         }
                     }
 
-                    // Group activity logs by trigger name -> agenda_ref
+                    // Group activity logs by trigger name -> focus_ref
                     const triggerLogsByFocus: Record<string, any[]> = {};
                     const triggerNameToFocus: Record<string, string> = {};
                     for (const trig of awareTriggers) {
-                        if (trig.agenda_ref) triggerNameToFocus[trig.name] = trig.agenda_ref;
+                        if (trig.focus_ref) triggerNameToFocus[trig.name] = trig.focus_ref;
                     }
                     const triggerRelatedLogs = activityLogs.filter((log: any) =>
                         log.action_type === 'trigger_fired' || log.action_type === 'trigger_created' ||
