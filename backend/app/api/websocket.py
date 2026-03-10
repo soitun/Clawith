@@ -242,6 +242,7 @@ async def call_llm(
         last_finish_reason = None
         _max_retries = 3
         _RETRIABLE_HTTP_CODES = {429, 500, 502, 503}
+        _last_req_id = ""  # Provider request ID from response headers
 
         # ── Streaming <think> tag filter state ──
         # Some reasoning models (MiniMax, DeepSeek-R1) wrap internal
@@ -255,7 +256,10 @@ async def call_llm(
                     async with client.stream("POST", url, json=payload, headers=headers) as resp:
                         # Debug: log HTTP status and request ID
                         _req_id = resp.headers.get("x-request-id") or resp.headers.get("request-id") or resp.headers.get("cf-ray") or ""
-                        print(f"[LLM-DBG] HTTP status={resp.status_code}, url={url}, request_id={_req_id}", flush=True)
+                        _last_req_id = _req_id
+                        # Log all response headers for debugging provider request IDs
+                        _hdr_keys = ", ".join(f"{k}={v[:60]}" for k, v in resp.headers.items() if k.lower() not in ("set-cookie", "content-type", "transfer-encoding", "connection"))
+                        print(f"[LLM-DBG] HTTP status={resp.status_code}, url={url}, request_id={_req_id}, headers=[{_hdr_keys}]", flush=True)
                         if resp.status_code in _RETRIABLE_HTTP_CODES:
                             error_body = ""
                             async for chunk in resp.aiter_bytes():
@@ -470,7 +474,8 @@ async def call_llm(
                             await _db.commit()
                 except Exception:
                     pass
-            return full_content or "[LLM returned empty content]"
+            _rid_suffix = f" (request_id={_last_req_id})" if _last_req_id else ""
+            return full_content or f"[LLM returned empty content]{_rid_suffix}"
 
         # Execute tool calls
         print(f"[LLM] Round {round_i+1}: {len(tool_calls_data)} tool call(s)")
