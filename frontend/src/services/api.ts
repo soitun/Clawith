@@ -14,8 +14,9 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     const res = await fetch(`${API_BASE}${url}`, { ...options, headers });
 
     if (!res.ok) {
-        // Auto-logout on expired/invalid token
-        if (res.status === 401) {
+        // Auto-logout on expired/invalid token (but not on auth endpoints — let them show errors)
+        const isAuthEndpoint = url.startsWith('/auth/login') || url.startsWith('/auth/register');
+        if (res.status === 401 && !isAuthEndpoint) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
             window.location.href = '/login';
