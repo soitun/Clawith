@@ -792,6 +792,7 @@ function AgentDetailInner() {
     const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
     const [chatInput, setChatInput] = useState('');
     const [wsConnected, setWsConnected] = useState(false);
+    const [chatWaiting, setChatWaiting] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(-1);
     const [attachedFile, setAttachedFile] = useState<{ name: string; text: string; path?: string; imageUrl?: string } | null>(null);
@@ -959,6 +960,7 @@ function AgentDetailInner() {
                         return [...prev, { role: 'assistant', content: d.content, _streaming: true } as any];
                     });
                 } else if (d.type === 'done') {
+                    setChatWaiting(false);
                     setChatMessages(prev => {
                         const last = prev[prev.length - 1];
                         const thinking = (last && last.role === 'assistant' && (last as any)._streaming) ? last.thinking : undefined;
@@ -968,6 +970,7 @@ function AgentDetailInner() {
                     // Silently refresh session list to update last_message_at (no loading spinner)
                     fetchMySessions(true);
                 } else if (d.type === 'error' || d.type === 'quota_exceeded') {
+                    setChatWaiting(false);
                     const msg = d.content || d.detail || d.message || 'Request denied';
                     // Only add message if not a duplicate of the last one
                     setChatMessages(prev => {
@@ -1085,6 +1088,7 @@ function AgentDetailInner() {
         setChatMessages(prev => [...prev, { role: 'user', content: userMsg, fileName: attachedFile?.name, imageUrl: attachedFile?.imageUrl }]);
         wsRef.current.send(JSON.stringify({ content: contentForLLM, display_content: userMsg, file_name: attachedFile?.name || '' }));
         setChatInput(''); setAttachedFile(null);
+        setChatWaiting(true);
     };
 
     const handleChatFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2778,7 +2782,7 @@ function AgentDetailInner() {
                                                     </div>
                                                 );
                                             })}
-                                            {chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'user' && wsConnected && (
+                                            {chatWaiting && (
                                                 <div style={{ display: 'flex', gap: '10px', padding: '12px 0', animation: 'fadeIn .2s ease' }}>
                                                     <div className="chat-avatar" style={{ color: 'var(--text-tertiary)' }}>{Icons.bot}</div>
                                                     <div className="chat-bubble" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '10px 14px' }}>
