@@ -120,11 +120,26 @@ async def call_llm(
     if agent_id:
         try:
             from app.models.agent import Agent as AgentModel
+            from datetime import datetime, timezone
             async with async_session() as _db:
                 _ar = await _db.execute(select(AgentModel).where(AgentModel.id == agent_id))
                 _agent = _ar.scalar_one_or_none()
                 if _agent:
                     _max_tool_rounds = _agent.max_tool_rounds or 50
+                    now = datetime.now(timezone.utc)
+                    
+                    # Daily reset check for tokens_used_today
+                    if not _agent.tokens_reset_at_daily or now.date() > _agent.tokens_reset_at_daily.date():
+                        _agent.tokens_used_today = 0
+                        _agent.tokens_reset_at_daily = now
+                        await _db.commit()
+                    
+                    # Monthly reset check for tokens_used_month
+                    if not _agent.tokens_reset_at_monthly or now.month != _agent.tokens_reset_at_monthly.month or now.year != _agent.tokens_reset_at_monthly.year:
+                        _agent.tokens_used_month = 0
+                        _agent.tokens_reset_at_monthly = now
+                        await _db.commit()
+                    
                     if _agent.max_tokens_per_day and _agent.tokens_used_today >= _agent.max_tokens_per_day:
                         return f"⚠️ Daily token usage has reached the limit ({_agent.tokens_used_today:,}/{_agent.max_tokens_per_day:,}). Please try again tomorrow or ask admin to increase the limit."
                     if _agent.max_tokens_per_month and _agent.tokens_used_month >= _agent.max_tokens_per_month:
@@ -458,8 +473,9 @@ async def call_llm(
         if not tool_calls_data:
             # Strip <think>...</think> from final content (reasoning models)
             import re as _re
+            from datetime import datetime, timezone
             full_content = _re.sub(r'<think>[\s\S]*?</think>\s*', '', full_content).strip()
-            # Track token usage
+            # Track token usage with daily/monthly reset
             if agent_id:
                 try:
                     async with async_session() as _db:
@@ -469,6 +485,18 @@ async def call_llm(
                         if _agent:
                             total_chars = sum(len(m.get('content', '') or '') for m in api_messages) + len(full_content or '')
                             estimated_tokens = max(total_chars // 3, 1)
+                            now = datetime.now(timezone.utc)
+                            
+                            # Daily reset for tokens_used_today
+                            if not _agent.tokens_reset_at_daily or now.date() > _agent.tokens_reset_at_daily.date():
+                                _agent.tokens_used_today = 0
+                                _agent.tokens_reset_at_daily = now
+                            
+                            # Monthly reset for tokens_used_month (reset on day 1 of each month)
+                            if not _agent.tokens_reset_at_monthly or now.month != _agent.tokens_reset_at_monthly.month or now.year != _agent.tokens_reset_at_monthly.year:
+                                _agent.tokens_used_month = 0
+                                _agent.tokens_reset_at_monthly = now
+                            
                             _agent.tokens_used_today = (_agent.tokens_used_today or 0) + estimated_tokens
                             _agent.tokens_used_month = (_agent.tokens_used_month or 0) + estimated_tokens
                             await _db.commit()

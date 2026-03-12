@@ -61,6 +61,8 @@ class Agent(Base):
     max_tokens_per_month: Mapped[int | None] = mapped_column(Integer)
     tokens_used_today: Mapped[int] = mapped_column(Integer, default=0)
     tokens_used_month: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_reset_at_daily: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    tokens_reset_at_monthly: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     context_window_size: Mapped[int] = mapped_column(Integer, default=100)
     max_tool_rounds: Mapped[int] = mapped_column(Integer, default=50)
 
