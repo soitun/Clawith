@@ -95,23 +95,24 @@ async def call_agent_llm(
         messages.extend(history[-10:])
     messages.append({"role": "user", "content": user_text})
 
-    # Use unified call_llm with failover
+    # Use unified call_llm_with_failover
+    from app.api.websocket import call_llm_with_failover
     try:
-        reply = await call_llm(
-            primary_model,
-            messages,
-            agent.name,
-            agent.role_description or "",
+        reply = await call_llm_with_failover(
+            primary_model=primary_model,
+            fallback_model=fallback_model,
+            messages=messages,
+            agent_name=agent.name,
+            role_description=agent.role_description or "",
             agent_id=agent_id,
             user_id=user_id or agent_id,
-            supports_vision=supports_vision or getattr(primary_model, 'supports_vision', False),
             on_chunk=on_chunk,
             on_thinking=on_thinking,
-            fallback_model=fallback_model,
+            supports_vision=supports_vision or getattr(primary_model, 'supports_vision', False),
         )
         return reply
     except Exception as e:
-        # call_llm should handle failover internally, but catch any unexpected errors
+        # call_llm_with_failover should handle failover internally, but catch any unexpected errors
         error_msg = str(e) or repr(e)
         logger.error(f"[call_agent_llm] Unexpected error: {error_msg}")
         return f"⚠️ 调用模型出错: {error_msg[:150]}"

@@ -107,108 +107,167 @@ async def call_llm(
     on_tool_call=None,
     on_thinking=None,
     supports_vision=False,
-    fallback_model: LLMModel | None = None,
 ) -> str:
-    """Call LLM via unified client with function-calling tool loop and failover support.
+    """Call LLM via unified client with function-calling tool loop.
 
     Args:
         on_chunk: Optional async callback(text: str) for streaming chunks to client.
         on_thinking: Optional async callback(text: str) for reasoning/thinking content.
         on_tool_call: Optional async callback(dict) for tool call status updates.
-        fallback_model: Optional fallback model for runtime failover.
+
+    Returns:
+        LLM response string, or error message if call fails.
     """
-    from app.services.llm_failover import classify_error, FailoverErrorType
+    return await _call_llm_core(
+        model, messages, agent_name, role_description,
+        agent_id, user_id, on_chunk, on_tool_call, on_thinking, supports_vision
+    )
 
-    async def _call_single(_model: LLMModel) -> str:
-        """Internal: call a single model without failover."""
-        return await _call_llm_core(
-            _model, messages, agent_name, role_description,
-            agent_id, user_id, on_chunk, on_tool_call, on_thinking, supports_vision
-        )
 
-    # Config-level fallback: if no primary, use fallback directly
-    if model is None and fallback_model is not None:
-        model = fallback_model
-        fallback_model = None
 
-    if model is None:
-        return "⚠️ 未配置 LLM 模型"
+async def _get_agent_config(agent_id) -> tuple[int, str | None]:
+    """Get agent config: max_tool_rounds and token limit status."""
+    if not agent_id:
+        return 50, None
 
-    # Try primary model
     try:
-        return await _call_single(model)
-    except Exception as e:
-        error_type = classify_error(e)
-        error_msg = str(e) or repr(e)
-        logger.warning(f"[call_llm] Primary failed ({error_type.value}): {error_msg[:150]}")
-
-        # Non-retryable: don't attempt fallback
-        if error_type == FailoverErrorType.NON_RETRYABLE:
-            return f"[LLM Error] {error_msg}"
-
-        # No fallback available
-        if fallback_model is None:
-            return f"[LLM Error] {error_msg}"
-
-        # Runtime fallback: retry with fallback model
-        logger.info(f"[call_llm] Retrying with fallback: {fallback_model.provider}/{fallback_model.model}")
-        try:
-            return await _call_single(fallback_model)
-        except Exception as e2:
-            error_msg2 = str(e2) or repr(e2)
-            logger.error(f"[call_llm] Fallback also failed: {error_msg2[:150]}")
-            return f"⚠️ 调用模型出错: Primary: {error_msg[:80]} | Fallback: {error_msg2[:80]}"
+        from app.models.agent import Agent as AgentModel
+        async with async_session() as _db:
+            _ar = await _db.execute(select(AgentModel).where(AgentModel.id == agent_id))
+            _agent = _ar.scalar_one_or_none()
+            if _agent:
+                max_rounds = _agent.max_tool_rounds or 50
+                if _agent.max_tokens_per_day and _agent.tokens_used_today >= _agent.max_tokens_per_day:
+                    return max_rounds, f"⚠️ Daily token usage has reached the limit ({_agent.tokens_used_today:,}/{_agent.max_tokens_per_day:,}). Please try again tomorrow or ask admin to increase the limit."
+                if _agent.max_tokens_per_month and _agent.tokens_used_month >= _agent.max_tokens_per_month:
+                    return max_rounds, f"⚠️ Monthly token usage has reached the limit ({_agent.tokens_used_month:,}/{_agent.max_tokens_per_month:,}). Please ask admin to increase the limit."
+                return max_rounds, None
+    except Exception:
+        pass
+    return 50, None
 
 
+async def _get_user_name(user_id) -> str | None:
+    """Get user's display name for personalized context."""
+    if not user_id:
+        return None
+    try:
+        from app.models.user import User as _UserModel
+        async with async_session() as _udb:
+            _ur = await _udb.execute(select(_UserModel).where(_UserModel.id == user_id))
+            _u = _ur.scalar_one_or_none()
+            if _u:
+                return _u.display_name or _u.username
+    except Exception:
+        pass
+    return None
 
-async def _call_llm_core(
-    model: LLMModel,
-    messages: list[dict],
-    agent_name: str,
-    role_description: str,
-    agent_id=None,
-    user_id=None,
-    on_chunk=None,
-    on_tool_call=None,
-    on_thinking=None,
-    supports_vision=False,
+
+def _convert_messages_for_vision(
+    api_messages: list, supports_vision: bool
+) -> list:
+    """Convert image markers to vision format if supported, or strip them."""
+    import re as _re_v
+
+    if supports_vision:
+        # Vision format: convert image markers to OpenAI Vision API format
+        for i, msg in enumerate(api_messages):
+            if msg.role != "user" or not msg.content or not isinstance(msg.content, str):
+                continue
+            content_str = msg.content
+            pattern = r'\[image_data:(data:image/[^;]+;base64,[A-Za-z0-9+/=]+)\]'
+            images = _re_v.findall(pattern, content_str)
+            if not images:
+                continue
+            text = _re_v.sub(pattern, '', content_str).strip()
+            parts = [{"type": "image_url", "image_url": {"url": img}} for img in images]
+            if text:
+                parts.append({"type": "text", "text": text})
+            api_messages[i] = type(msg)(role=msg.role, content=parts)
+    else:
+        # Strip base64 markers for non-vision models
+        _img_pattern = r'\[image_data:data:image/[^;]+;base64,[A-Za-z0-9+/=]+\]'
+        for i, msg in enumerate(api_messages):
+            if msg.role != "user" or not isinstance(msg.content, str):
+                continue
+            if "[image_data:" in msg.content:
+                _n_imgs = len(_re_v.findall(_img_pattern, msg.content))
+                cleaned = _re_v.sub(_img_pattern, '', msg.content).strip()
+                if _n_imgs > 0:
+                    cleaned += f"\n[用户发送了 {_n_imgs} 张图片，但当前模型不支持视觉，无法查看图片内容]"
+                api_messages[i] = type(msg)(role=msg.role, content=cleaned)
+    return api_messages
+
+
+def _check_tool_requires_args(tool_name: str, args: dict) -> tuple[bool, str]:
+    """Check if tool requires arguments and return (should_execute, result_or_error)."""
+    _TOOLS_REQUIRING_ARGS = {"write_file", "read_file", "delete_file", "read_document", "send_message_to_agent", "send_feishu_message", "send_email"}
+    if not args and tool_name in _TOOLS_REQUIRING_ARGS:
+        return False, f"Error: {tool_name} was called with empty arguments. You must provide the required parameters. Please retry with the correct arguments."
+    return True, ""
+
+
+async def _process_tool_call(
+    tc: dict,
+    api_messages: list,
+    agent_id,
+    user_id,
+    on_tool_call,
+    full_reasoning_content: str,
 ) -> str:
-    """Core LLM call implementation (single model, no failover)."""
-    from app.services.agent_tools import AGENT_TOOLS, execute_tool, get_agent_tools_for_llm
-    from app.services.llm_utils import create_llm_client, get_max_tokens, LLMMessage, LLMError
+    """Process a single tool call and return result."""
+    from app.services.agent_tools import execute_tool
+    import json
 
-    # ── Token limit check & config ──
-    _max_tool_rounds = 50  # default
-    if agent_id:
+    fn = tc["function"]
+    tool_name = fn["name"]
+    raw_args = fn.get("arguments", "{}")
+    logger.info(f"[LLM] Calling tool: {tool_name}({json.dumps(raw_args, ensure_ascii=False)[:100]})")
+
+    try:
+        args = json.loads(raw_args) if raw_args else {}
+    except json.JSONDecodeError:
+        args = {}
+
+    # Guard: check if tool requires arguments
+    should_execute, error_msg = _check_tool_requires_args(tool_name, args)
+    if not should_execute:
+        return error_msg
+
+    # Notify client about tool call (in-progress)
+    if on_tool_call:
         try:
-            from app.models.agent import Agent as AgentModel
-            async with async_session() as _db:
-                _ar = await _db.execute(select(AgentModel).where(AgentModel.id == agent_id))
-                _agent = _ar.scalar_one_or_none()
-                if _agent:
-                    _max_tool_rounds = _agent.max_tool_rounds or 50
-                    if _agent.max_tokens_per_day and _agent.tokens_used_today >= _agent.max_tokens_per_day:
-                        return f"⚠️ Daily token usage has reached the limit ({_agent.tokens_used_today:,}/{_agent.max_tokens_per_day:,}). Please try again tomorrow or ask admin to increase the limit."
-                    if _agent.max_tokens_per_month and _agent.tokens_used_month >= _agent.max_tokens_per_month:
-                        return f"⚠️ Monthly token usage has reached the limit ({_agent.tokens_used_month:,}/{_agent.max_tokens_per_month:,}). Please ask admin to increase the limit."
+            await on_tool_call({
+                "name": tool_name,
+                "args": args,
+                "status": "running",
+                "reasoning_content": full_reasoning_content
+            })
         except Exception:
             pass
 
-    # Build rich prompt with soul, memory, skills, relationships
-    from app.services.agent_context import build_agent_context
-    # Look up current user's display name so the agent knows who it's talking to
-    _current_user_name = None
-    if user_id:
+    # Execute tool
+    result = await execute_tool(
+        tool_name, args,
+        agent_id=agent_id,
+        user_id=user_id or agent_id,
+    )
+    logger.debug(f"[LLM] Tool result: {result[:100]}")
+
+    # Notify client about tool call result
+    if on_tool_call:
         try:
-            from app.models.user import User as _UserModel
-            async with async_session() as _udb:
-                _ur = await _udb.execute(select(_UserModel).where(_UserModel.id == user_id))
-                _u = _ur.scalar_one_or_none()
-                if _u:
-                    _current_user_name = _u.display_name or _u.username
+            await on_tool_call({
+                "name": tool_name,
+                "args": args,
+                "status": "done",
+                "result": result,
+                "reasoning_content": full_reasoning_content
+            })
         except Exception:
             pass
-    system_prompt = await build_agent_context(agent_id, agent_name, role_description, current_user_name=_current_user_name)
+
+    return str(result)
 
     # Load tools dynamically from DB
     tools_for_llm = await get_agent_tools_for_llm(agent_id) if agent_id else AGENT_TOOLS
@@ -276,7 +335,7 @@ async def _call_llm_core(
             timeout=120.0,
         )
     except Exception as e:
-        raise LLMError(f"Failed to create LLM client: {e}")
+        return f"[Error] Failed to create LLM client: {e}"
 
     max_tokens = get_max_tokens(model.provider, model.model, getattr(model, 'max_output_tokens', None))
 
@@ -317,7 +376,7 @@ async def _call_llm_core(
                 on_thinking=on_thinking,
             )
         except LLMError as e:
-            # Record accumulated tokens before raising
+            # Record accumulated tokens before returning error
             logger.error(
                 f"[LLM] LLMError provider={getattr(model, 'provider', '?')} "
                 f"model={getattr(model, 'model', '?')} round={round_i + 1}: {e}"
@@ -325,7 +384,7 @@ async def _call_llm_core(
             if agent_id and _accumulated_tokens > 0:
                 await record_token_usage(agent_id, _accumulated_tokens)
             await client.close()
-            raise  # Re-raise for failover handling
+            return f"[LLM Error] {e}"
         except Exception as e:
             logger.error(
                 f"[LLM] Unexpected error provider={getattr(model, 'provider', '?')} "
@@ -335,7 +394,7 @@ async def _call_llm_core(
             if agent_id and _accumulated_tokens > 0:
                 await record_token_usage(agent_id, _accumulated_tokens)
             await client.close()
-            raise  # Re-raise for failover handling
+            return f"[LLM call error] {type(e).__name__}: {str(e)[:200]}"
 
         # ── Track tokens for this round ──
         real_tokens = extract_usage_tokens(response.usage)
@@ -438,7 +497,7 @@ async def _call_llm_core(
     if agent_id and _accumulated_tokens > 0:
         await record_token_usage(agent_id, _accumulated_tokens)
     await client.close()
-    raise LLMError("Too many tool call rounds")
+    return "[Error] Too many tool call rounds"
 
 
 @router.websocket("/ws/chat/{agent_id}")
@@ -786,20 +845,27 @@ async def websocket_chat(
 
                     import asyncio as _aio
 
-                    # Run call_llm as a cancellable task
-                    llm_task = _aio.create_task(call_llm(
-                        llm_model,
-                        conversation[-ctx_size:],
-                        agent_name,
-                        role_description,
-                        agent_id=agent_id,
-                        user_id=user_id,
-                        on_chunk=stream_to_ws,
-                        on_tool_call=tool_call_to_ws,
-                        on_thinking=thinking_to_ws,
-                        supports_vision=getattr(llm_model, 'supports_vision', False),
-                        fallback_model=fallback_llm_model,
-                    ))
+                    # Run call_llm_with_failover as a cancellable task
+                    async def _call_with_failover():
+                        async def _on_failover(reason: str):
+                            await websocket.send_json({"type": "info", "content": f"Primary model error, {reason}"})
+
+                        return await call_llm_with_failover(
+                            primary_model=llm_model,
+                            fallback_model=fallback_llm_model,
+                            messages=conversation[-ctx_size:],
+                            agent_name=agent_name,
+                            role_description=role_description,
+                            agent_id=agent_id,
+                            user_id=user_id,
+                            on_chunk=stream_to_ws,
+                            on_tool_call=tool_call_to_ws,
+                            on_thinking=thinking_to_ws,
+                            supports_vision=getattr(llm_model, 'supports_vision', False),
+                            on_failover=_on_failover,
+                        )
+
+                    llm_task = _aio.create_task(_call_with_failover())
 
                     # Listen for abort while LLM is running
                     aborted = False
@@ -865,8 +931,7 @@ async def websocket_chat(
                     logger.error(f"[WS] LLM error: {e}")
                     import traceback
                     traceback.print_exc()
-                    # call_llm now handles failover internally, just return the error message
-                    assistant_response = str(e) if str(e) else "[LLM call error]"
+                    assistant_response = f"[LLM call error] {str(e)[:200]}"
             else:
                 assistant_response = f"⚠️ {agent_name} has no LLM model configured. Please select a model in the agent's Settings tab."
 
@@ -933,3 +998,209 @@ async def websocket_chat(
             await websocket.close(code=1011)
         except Exception:
             pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Unified Failover Wrapper (Option B implementation per issue #154)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class FailoverGuard:
+    """Guard state for failover decisions."""
+
+    def __init__(self):
+        self.tool_executed = False
+        self.streaming_started = False
+        self.failover_done = False
+
+    def mark_tool_executed(self):
+        """Mark that a side-effecting tool has been executed."""
+        self.tool_executed = True
+
+    def mark_streaming_started(self):
+        """Mark that streaming output has started."""
+        self.streaming_started = True
+
+    def mark_failover_done(self):
+        """Mark that failover has already happened once."""
+        self.failover_done = True
+
+    def can_failover(self) -> bool:
+        """Check if failover is allowed based on guard rules."""
+        if self.failover_done:
+            return False  # Only failover once
+        if self.tool_executed:
+            return False  # Don't failover after side effects
+        if self.streaming_started:
+            return False  # Don't failover after streaming started
+        return True
+
+
+def is_retryable_error(result: str) -> bool:
+    """Check if an error result is retryable (network, timeout, 429, 5xx).
+
+    Non-retryable: auth errors (401, 403), validation (400, 422), content policy
+    Retryable: timeout, connection, 429, 5xx, transient errors
+    """
+    if not (result.startswith("[LLM Error]") or result.startswith("[LLM call error]") or result.startswith("[Error]")):
+        return False
+
+    result_lower = result.lower()
+
+    # Non-retryable: authentication and authorization
+    if any(kw in result_lower for kw in ["auth", "unauthorized", "forbidden", "invalid api key", "api key invalid", "401", "403"]):
+        return False
+
+    # Non-retryable: validation and schema
+    if any(kw in result_lower for kw in ["validation", "invalid request", "schema", "bad request", "400", "422"]):
+        return False
+
+    # Non-retryable: content policy
+    if any(kw in result_lower for kw in ["content policy", "content_filter", "safety", "moderation"]):
+        return False
+
+    # Retryable by default (any other error is potentially retryable)
+    return True
+
+
+async def call_llm_with_failover(
+    primary_model: LLMModel,
+    fallback_model: LLMModel | None,
+    messages: list[dict],
+    agent_name: str,
+    role_description: str,
+    agent_id=None,
+    user_id=None,
+    on_chunk=None,
+    on_thinking=None,
+    on_tool_call=None,
+    supports_vision=False,
+    on_failover=None,
+) -> str:
+    """Call LLM with automatic failover support (wrapper approach).
+
+    This is the unified entry point for all LLM calls with failover.
+    Implements Option B from issue #154 review:
+    - Inspects return values for retryable errors
+    - Applies guard checks before failover
+    - Notifies caller when failover happens
+
+    Args:
+        primary_model: Primary LLM model
+        fallback_model: Fallback LLM model (can be None)
+        messages: Conversation messages
+        agent_name: Agent display name
+        role_description: Agent role description
+        agent_id: Optional agent UUID
+        user_id: Optional user UUID
+        on_chunk: Optional streaming callback
+        on_thinking: Optional thinking callback
+        on_tool_call: Optional tool call callback
+        supports_vision: Whether model supports vision
+        on_failover: Optional callback(reason: str) called when failover happens
+
+    Returns:
+        LLM response string (from primary or fallback)
+    """
+    from app.services.agent_tools import execute_tool, get_agent_tools_for_llm
+    from app.services.llm_utils import create_llm_client, get_max_tokens, LLMMessage, LLMError
+
+    guard = FailoverGuard()
+
+    # Config-level fallback: if no primary, use fallback directly
+    if primary_model is None and fallback_model is not None:
+        logger.info("[Failover] Primary model not configured, using fallback directly")
+        primary_model = fallback_model
+        fallback_model = None
+
+    if primary_model is None:
+        return "⚠️ 未配置 LLM 模型"
+
+    # Wrapper callbacks to track state for guard checks
+    async def _wrapped_on_chunk(text: str):
+        guard.mark_streaming_started()
+        if on_chunk:
+            await on_chunk(text)
+
+    async def _wrapped_on_tool_call(data: dict):
+        if data.get("status") == "done":
+            guard.mark_tool_executed()
+        if on_tool_call:
+            await on_tool_call(data)
+
+    # Try primary model
+    primary_result = await call_llm(
+        primary_model,
+        messages,
+        agent_name,
+        role_description,
+        agent_id=agent_id,
+        user_id=user_id,
+        on_chunk=_wrapped_on_chunk,
+        on_tool_call=_wrapped_on_tool_call,
+        on_thinking=on_thinking,
+        supports_vision=supports_vision,
+    )
+
+    # Check if we need to failover
+    if not is_retryable_error(primary_result):
+        return primary_result
+
+    # Check guard conditions
+    if not guard.can_failover():
+        if guard.tool_executed:
+            logger.warning("[Failover] Blocked: side-effecting tool already executed")
+        elif guard.streaming_started:
+            logger.warning("[Failover] Blocked: streaming already started")
+        elif guard.failover_done:
+            logger.warning("[Failover] Blocked: failover already done once")
+        return primary_result
+
+    # No fallback available
+    if fallback_model is None:
+        logger.warning("[Failover] No fallback model available")
+        return primary_result
+
+    # Runtime failover: retry with fallback model
+    logger.info(f"[Failover] Retrying with fallback model: {fallback_model.provider}/{fallback_model.model}")
+
+    if on_failover:
+        try:
+            await on_failover(f"Switched to fallback model: {fallback_model.model}")
+        except Exception:
+            pass
+
+    guard.mark_failover_done()
+
+    # Call fallback with fresh callbacks (streaming/tool state is per-call)
+    fallback_guard = FailoverGuard()
+    fallback_guard.mark_failover_done()  # Don't failover again
+
+    async def _fallback_on_chunk(text: str):
+        fallback_guard.mark_streaming_started()
+        if on_chunk:
+            await on_chunk(text)
+
+    async def _fallback_on_tool_call(data: dict):
+        if data.get("status") == "done":
+            fallback_guard.mark_tool_executed()
+        if on_tool_call:
+            await on_tool_call(data)
+
+    fallback_result = await call_llm(
+        fallback_model,
+        messages,
+        agent_name,
+        role_description,
+        agent_id=agent_id,
+        user_id=user_id,
+        on_chunk=_fallback_on_chunk,
+        on_tool_call=_fallback_on_tool_call,
+        on_thinking=on_thinking,
+        supports_vision=getattr(fallback_model, 'supports_vision', False),
+    )
+
+    # Combine error messages if fallback also failed
+    if is_retryable_error(fallback_result) or fallback_result.startswith("⚠️") or fallback_result.startswith("[Error]"):
+        return f"⚠️ 调用模型出错: Primary: {primary_result[:80]} | Fallback: {fallback_result[:80]}"
+
+    return fallback_result
