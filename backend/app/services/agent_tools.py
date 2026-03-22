@@ -16,8 +16,9 @@ import json
 import os
 import uuid
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 from loguru import logger
 
@@ -29,6 +30,76 @@ from app.config import get_settings
 
 _settings = get_settings()
 WORKSPACE_ROOT = Path(_settings.AGENT_DATA_DIR)
+
+# ─── Tool Config Cache ──────────────────────────────────────────
+# Cache tool configurations to avoid frequent DB queries
+# Key: (agent_id, tool_name), Value: (config, expiry_time)
+_tool_config_cache: dict[tuple, tuple[dict, datetime]] = {}
+_TOOL_CONFIG_CACHE_TTL_SECONDS = 60
+
+
+def _get_cached_tool_config(agent_id: Optional[uuid.UUID], tool_name: str) -> Optional[dict]:
+    """获取缓存的工具配置，过期返回 None。"""
+    cache_key = (str(agent_id) if agent_id else None, tool_name)
+    if cache_key in _tool_config_cache:
+        config, expiry = _tool_config_cache[cache_key]
+        if datetime.now() < expiry:
+            return config
+        # 过期，删除
+        del _tool_config_cache[cache_key]
+    return None
+
+
+def _set_cached_tool_config(agent_id: Optional[uuid.UUID], tool_name: str, config: dict):
+    """设置工具配置缓存。"""
+    cache_key = (str(agent_id) if agent_id else None, tool_name)
+    expiry = datetime.now() + timedelta(seconds=_TOOL_CONFIG_CACHE_TTL_SECONDS)
+    _tool_config_cache[cache_key] = (config, expiry)
+
+
+async def _get_tool_config(agent_id: Optional[uuid.UUID], tool_name: str) -> Optional[dict]:
+    """获取工具配置（带缓存）。
+
+    优先级：
+    1. agent_tools.config (per-agent 配置)
+    2. tools.config (全局配置)
+    """
+    # 先检查缓存
+    cached = _get_cached_tool_config(agent_id, tool_name)
+    if cached is not None:
+        logger.debug(f"[ToolConfig] Cache hit for {tool_name}, agent_id={agent_id}: {cached}")
+        return cached
+
+    from app.models.tool import Tool, AgentTool
+
+    async with async_session() as db:
+        # 1. 先查 per-agent 配置
+        if agent_id:
+            result = await db.execute(
+                select(AgentTool.config, Tool.config)
+                .join(Tool, AgentTool.tool_id == Tool.id)
+                .where(AgentTool.agent_id == agent_id, Tool.name == tool_name)
+            )
+            row = result.first()
+            if row:
+                agent_config, global_config = row
+                # 合并配置：agent_config 覆盖 global_config
+                merged = {**(global_config or {}), **(agent_config or {})}
+                if merged:
+                    logger.info(f"[ToolConfig] DB merged config for {tool_name}, agent_id={agent_id}: agent={agent_config}, global={global_config}, merged={merged}")
+                    _set_cached_tool_config(agent_id, tool_name, merged)
+                    return merged
+
+        # 2. 回退到全局配置
+        result = await db.execute(select(Tool).where(Tool.name == tool_name))
+        tool = result.scalar_one_or_none()
+        if tool and tool.config:
+            logger.info(f"[ToolConfig] DB global config for {tool_name}: {tool.config}")
+            _set_cached_tool_config(agent_id, tool_name, tool.config)
+            return tool.config
+
+    logger.info(f"[ToolConfig] No DB config found for {tool_name}, agent_id={agent_id}")
+    return None
 
 # ContextVar set by each channel handler so send_channel_file knows where to send
 # Value: async callable(file_path: Path) -> None  |  None for web chat (returns URL)
@@ -1170,7 +1241,7 @@ async def execute_tool(
         elif tool_name == "plaza_add_comment":
             result = await _plaza_add_comment(agent_id, arguments)
         elif tool_name == "execute_code":
-            result = await _execute_code(ws, arguments)
+            result = await _execute_code(agent_id, ws, arguments)
         elif tool_name == "upload_image":
             result = await _upload_image(agent_id, ws, arguments)
         elif tool_name == "discover_resources":
@@ -3101,7 +3172,7 @@ def _check_code_safety(language: str, code: str) -> str | None:
     return None
 
 
-async def _execute_code(ws: Path, arguments: dict) -> str:
+async def _execute_code(agent_id: Optional[uuid.UUID], ws: Path, arguments: dict) -> str:
     """Execute code using the configured sandbox backend."""
     language = arguments.get("language", "python")
     code = arguments.get("code", "")
@@ -3120,11 +3191,25 @@ async def _execute_code(ws: Path, arguments: dict) -> str:
     try:
         # Import here to avoid circular imports
         from app.config import get_sandbox_config
+        from app.services.sandbox.config import SandboxConfig
         from app.services.sandbox.registry import get_sandbox_backend
 
-        # Get sandbox config and backend
-        sandbox_config = get_sandbox_config()
+        # Get sandbox config: prefer tool config from DB, fallback to env vars
+        fallback_config = get_sandbox_config()
+        logger.info(f"[Sandbox] Fallback config from env: type={fallback_config.type}, api_url={fallback_config.api_url}, api_key={'***' if fallback_config.api_key else '(empty)'}")
+
+        tool_config = await _get_tool_config(agent_id, "execute_code")
+        logger.info(f"[Sandbox] Tool config from DB: {tool_config}")
+
+        if tool_config:
+            sandbox_config = SandboxConfig.from_dict(tool_config, fallback_config)
+            logger.info(f"[Sandbox] Merged config: type={sandbox_config.type}, api_url={sandbox_config.api_url}, api_key={'***' if sandbox_config.api_key else '(empty)'}")
+        else:
+            sandbox_config = fallback_config
+            logger.info(f"[Sandbox] Using fallback config (no DB config)")
+
         backend = get_sandbox_backend(sandbox_config)
+        logger.info(f"[Sandbox] Backend created: {backend.__class__.__name__}")
 
         # Execute code using the sandbox backend
         result = await backend.execute(
@@ -3139,15 +3224,11 @@ async def _execute_code(ws: Path, arguments: dict) -> str:
 
     except ValueError as e:
         # Sandbox disabled or misconfigured - fall back to legacy subprocess
-        # Import asyncio for fallback
-        import asyncio
-
         # Fall through to legacy implementation below
         return await _execute_code_legacy(ws, arguments)
 
     except Exception as e:
         # Try fallback to legacy subprocess
-        import asyncio
         try:
             return await _execute_code_legacy(ws, arguments)
         except Exception:

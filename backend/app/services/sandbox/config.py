@@ -1,7 +1,11 @@
 """Sandbox configuration models."""
 
+import logging
 from enum import Enum
+from typing import Optional
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class SandboxType(str, Enum):
@@ -46,3 +50,70 @@ class SandboxConfig(BaseModel):
 
     class Config:
         use_enum_values = True
+
+    @classmethod
+    def from_dict(
+        cls, config: dict, fallback_config: Optional["SandboxConfig"] = None
+    ) -> "SandboxConfig":
+        """从 dict 构建 SandboxConfig，支持字段级 fallback。
+
+        Args:
+            config: 工具配置 dict
+            fallback_config: 回退配置（通常是环境变量配置）
+
+        Returns:
+            SandboxConfig 实例
+        """
+        logger.info(f"[SandboxConfig.from_dict] Input config: {config}")
+        if fallback_config:
+            logger.info(f"[SandboxConfig.from_dict] Fallback config: type={fallback_config.type}, api_url={fallback_config.api_url}")
+
+        def get_value(key: str, default=None, encrypt: bool = False):
+            """获取配置值，优先从 config 读取，缺失则使用 fallback。"""
+            value = config.get(key)
+            if value is None or value == "":
+                if fallback_config:
+                    value = getattr(fallback_config, key, default)
+                else:
+                    value = default
+
+            # 解密敏感字段
+            if encrypt and value:
+                try:
+                    from app.core.security import decrypt_data
+
+                    from app.config import get_settings
+
+                    settings = get_settings()
+                    decrypted = decrypt_data(value, settings.SECRET_KEY)
+                    logger.info(f"[SandboxConfig.from_dict] Decrypted {key}: {value[:20]}... -> {decrypted[:10] if decrypted else '(empty)'}...")
+                    value = decrypted
+                except Exception as e:
+                    logger.warning(f"[SandboxConfig.from_dict] Failed to decrypt {key}: {e}")
+                    # 解密失败，使用 fallback
+                    if fallback_config:
+                        value = getattr(fallback_config, key, default)
+                    else:
+                        value = default
+            return value
+
+        # Map config key names to SandboxConfig attributes
+        sandbox_type_str = get_value("sandbox_type", "subprocess")
+        try:
+            sandbox_type = SandboxType(sandbox_type_str)
+        except ValueError:
+            sandbox_type = SandboxType.SUBPROCESS
+
+        result = cls(
+            type=sandbox_type,
+            enabled=True,  # Always enabled when explicitly configured
+            api_key=get_value("api_key", "", encrypt=True),
+            api_url=get_value("api_url", ""),
+            cpu_limit=get_value("cpu_limit", "0.5"),
+            memory_limit=get_value("memory_limit", "256m"),
+            allow_network=get_value("allow_network", False),
+            default_timeout=get_value("default_timeout", 30),
+            max_timeout=get_value("max_timeout", 60),
+        )
+        logger.info(f"[SandboxConfig.from_dict] Result: type={result.type}, api_url={result.api_url}, api_key={'***' if result.api_key else '(empty)'}")
+        return result

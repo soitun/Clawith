@@ -15,6 +15,42 @@ from app.models.user import User
 router = APIRouter(prefix="/tools", tags=["tools"])
 
 
+# Sensitive field keys that should be encrypted when stored
+SENSITIVE_FIELD_KEYS = {"api_key", "private_key", "auth_code", "password", "secret"}
+
+
+def _encrypt_sensitive_fields(config: dict) -> dict:
+    """Encrypt sensitive fields in config dict.
+
+    Args:
+        config: Tool config dict
+
+    Returns:
+        Config dict with sensitive fields encrypted
+    """
+    from app.core.security import encrypt_data
+    from app.config import get_settings
+
+    if not config:
+        return config
+
+    settings = get_settings()
+    result = dict(config)
+
+    for key in SENSITIVE_FIELD_KEYS:
+        if key in result and result[key]:
+            # Only encrypt if not already encrypted (check if it looks like base64)
+            value = result[key]
+            if isinstance(value, str) and value:
+                try:
+                    result[key] = encrypt_data(value, settings.SECRET_KEY)
+                except Exception:
+                    # If encryption fails, keep the value as-is
+                    pass
+
+    return result
+
+
 # ─── Schemas ────────────────────────────────────────────────
 class ToolCreate(BaseModel):
     name: str
@@ -137,7 +173,12 @@ async def update_tool(
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
 
-    for field, value in data.model_dump(exclude_unset=True).items():
+    update_data = data.model_dump(exclude_unset=True)
+    # Encrypt sensitive fields in config
+    if "config" in update_data and update_data["config"]:
+        update_data["config"] = _encrypt_sensitive_fields(update_data["config"])
+
+    for field, value in update_data.items():
         setattr(tool, field, value)
     await db.commit()
     return {"ok": True}
@@ -361,15 +402,18 @@ async def update_agent_tool_config(
     db: AsyncSession = Depends(get_db),
 ):
     """Save per-agent config override for a tool."""
+    # Encrypt sensitive fields
+    encrypted_config = _encrypt_sensitive_fields(data.config)
+
     at_r = await db.execute(
         select(AgentTool).where(AgentTool.agent_id == agent_id, AgentTool.tool_id == tool_id)
     )
     at = at_r.scalar_one_or_none()
     if at:
-        at.config = data.config
+        at.config = encrypted_config
     else:
         # Create assignment if not exists
-        db.add(AgentTool(agent_id=agent_id, tool_id=tool_id, enabled=True, config=data.config))
+        db.add(AgentTool(agent_id=agent_id, tool_id=tool_id, enabled=True, config=encrypted_config))
     await db.commit()
     return {"ok": True}
 

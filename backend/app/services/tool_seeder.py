@@ -430,11 +430,85 @@ BUILTIN_TOOLS = [
             },
             "required": ["language", "code"],
         },
-        "config": {"default_timeout": 30, "max_timeout": 60},
+        "config": {
+            "sandbox_type": "subprocess",
+            "api_key": "",
+            "api_url": "",
+            "cpu_limit": "0.5",
+            "memory_limit": "256m",
+            "allow_network": False,
+            "default_timeout": 30,
+            "max_timeout": 60,
+        },
         "config_schema": {
             "fields": [
-                {"key": "default_timeout", "label": "Default Timeout (seconds)", "type": "number", "default": 30, "min": 5, "max": 120},
-                {"key": "max_timeout", "label": "Max Timeout (seconds)", "type": "number", "default": 60, "min": 10, "max": 120},
+                {
+                    "key": "sandbox_type",
+                    "label": "Sandbox Type",
+                    "type": "select",
+                    "options": [
+                        {"value": "subprocess", "label": "Subprocess (local)"},
+                        {"value": "docker", "label": "Docker (local)"},
+                        {"value": "e2b", "label": "E2B (cloud)"},
+                        {"value": "judge0", "label": "Judge0 (API)"},
+                        {"value": "codesandbox", "label": "CodeSandbox (API)"},
+                        {"value": "self_hosted", "label": "Self-hosted"},
+                        {"value": "aio_sandbox", "label": "AIO Sandbox"},
+                    ],
+                    "default": "subprocess",
+                },
+                {
+                    "key": "api_key",
+                    "label": "API Key",
+                    "type": "password",
+                    "default": "",
+                    "placeholder": "Required for cloud/API sandboxes",
+                    "depends_on": {"sandbox_type": ["e2b", "judge0", "codesandbox", "self_hosted", "aio_sandbox"]},
+                },
+                {
+                    "key": "api_url",
+                    "label": "API URL",
+                    "type": "text",
+                    "default": "",
+                    "placeholder": "Required for self-hosted sandboxes",
+                    "depends_on": {"sandbox_type": ["self_hosted", "aio_sandbox"]},
+                },
+                {
+                    "key": "cpu_limit",
+                    "label": "CPU Limit",
+                    "type": "text",
+                    "default": "0.5",
+                    "placeholder": "e.g., 0.5, 1.0, 2.0",
+                },
+                {
+                    "key": "memory_limit",
+                    "label": "Memory Limit",
+                    "type": "text",
+                    "default": "256m",
+                    "placeholder": "e.g., 256m, 512m, 1g",
+                },
+                {
+                    "key": "allow_network",
+                    "label": "Allow Network Access",
+                    "type": "checkbox",
+                    "default": False,
+                },
+                {
+                    "key": "default_timeout",
+                    "label": "Default Timeout (seconds)",
+                    "type": "number",
+                    "default": 30,
+                    "min": 5,
+                    "max": 300,
+                },
+                {
+                    "key": "max_timeout",
+                    "label": "Max Timeout (seconds)",
+                    "type": "number",
+                    "default": 60,
+                    "min": 10,
+                    "max": 300,
+                },
             ]
         },
     },
@@ -884,6 +958,10 @@ async def seed_builtin_tools():
                 if t.get("config_schema") and existing.config_schema != t["config_schema"]:
                     existing.config_schema = t["config_schema"]
                     updated_fields.append("config_schema")
+                    # Merge new config defaults when config_schema changes
+                    if t.get("config"):
+                        existing.config = {**t["config"], **(existing.config or {})}
+                        updated_fields.append("config")
                 if not existing.config and t.get("config"):
                     existing.config = t["config"]
                     updated_fields.append("config")

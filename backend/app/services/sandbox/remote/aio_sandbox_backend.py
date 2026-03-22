@@ -1,11 +1,14 @@
 """aio-sandbox backend."""
 
+import logging
 import time
 
 import httpx
 
 from app.services.sandbox.base import BaseSandboxBackend, ExecutionResult, SandboxCapabilities
 from app.services.sandbox.config import SandboxConfig
+
+logger = logging.getLogger(__name__)
 
 
 class AioSandboxBackend(BaseSandboxBackend):
@@ -28,6 +31,7 @@ class AioSandboxBackend(BaseSandboxBackend):
     def __init__(self, config: SandboxConfig):
         self.config = config
         self.base_url = config.api_url.rstrip("/") if config.api_url else ""
+        logger.info(f"[AioSandboxBackend] Initialized with base_url={self.base_url}, api_key={'***' if config.api_key else '(empty)'}")
 
         if not self.base_url:
             raise ValueError(
@@ -66,6 +70,7 @@ class AioSandboxBackend(BaseSandboxBackend):
     ) -> ExecutionResult:
         """Execute code using aio-sandbox."""
         start_time = time.time()
+        logger.info(f"[AioSandboxBackend] Executing {language} code, base_url={self.base_url}")
 
         # Determine endpoint based on language
         # Use jupyter for python, shell for others
@@ -93,12 +98,13 @@ class AioSandboxBackend(BaseSandboxBackend):
                     error=f"Unsupported language: {language}. Use python, bash, or node."
                 )
 
-            payload = {"cmd": cmd}
+            payload = {"command": cmd}
 
         # Build headers
         headers = {"Content-Type": "application/json"}
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
+        logger.info(f"[AioSandboxBackend] POST {endpoint}, headers have_auth={bool(self.config.api_key)}")
 
         try:
             async with httpx.AsyncClient() as client:
@@ -122,35 +128,43 @@ class AioSandboxBackend(BaseSandboxBackend):
                     )
 
                 result = response.json()
+                logger.info(f"[AioSandboxBackend] Response: success={result.get('success')}, data keys={list(result.get('data', {}).keys()) if result.get('data') else 'none'}")
 
                 # Parse response
-                # Shell: {"success": true, "data": {"output": "..."}}
-                # Jupyter: {"output": "...", "status": "ok"}
+                # Shell: {"success": true, "data": {"output": "...", "exit_code": 0}}
+                # Jupyter: {"success": true, "data": {"status": "ok", "outputs": [{"text": "..."}]}}
 
                 stdout = ""
                 stderr = ""
-                success = True
+                success = result.get("success", True)
                 error_msg = None
                 exit_code = 0
 
+                data = result.get("data", {})
+
                 if language == "python":
-                    # Jupyter format
-                    stdout = result.get("output", "")
-                    if result.get("status") != "ok":
+                    # Jupyter format - outputs is a list
+                    if data and "outputs" in data:
+                        outputs = data["outputs"]
+                        text_parts = []
+                        for out in outputs:
+                            if out.get("output_type") == "stream" and out.get("name") == "stdout":
+                                text_parts.append(out.get("text", ""))
+                            elif out.get("output_type") == "error":
+                                stderr += out.get("traceback", [""])[0] if out.get("traceback") else out.get("evalue", "")
+                        stdout = "".join(text_parts)
+
+                    if data.get("status") != "ok":
                         success = False
-                        error_msg = result.get("error", stdout)
                         exit_code = 1
                 else:
                     # Shell format
-                    if "data" in result and isinstance(result.get("data"), dict):
-                        stdout = result["data"].get("output", "")
-                    elif "output" in result:
-                        stdout = result.get("output", "")
+                    if data:
+                        stdout = data.get("output", "")
+                        exit_code = data.get("exit_code", 0)
 
-                    success = result.get("success", True)
                     if not success:
-                        error_msg = result.get("error", "Command failed")
-                        exit_code = 1
+                        error_msg = data.get("output", "Command failed")
 
                 return ExecutionResult(
                     success=success,
