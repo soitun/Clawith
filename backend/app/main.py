@@ -12,6 +12,7 @@ from app.core.logging_config import configure_logging, intercept_standard_loggin
 from app.core.middleware import TraceIdMiddleware
 from app.schemas.schemas import HealthResponse
 
+
 settings = get_settings()
 
 
@@ -231,7 +232,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add TraceIdMiddleware first so it's executed for all requests
+# Add TraceIdMiddleware
 app.add_middleware(TraceIdMiddleware)
 
 # CORS
@@ -244,6 +245,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 
 # Register API routes
 from app.api.auth import router as auth_router
