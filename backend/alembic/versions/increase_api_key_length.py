@@ -17,7 +17,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Increase api_key_encrypted column length from 500 to 2000
+    # Increase api_key_encrypted column length from 500 to 1024
     # Minimax API keys are very long and exceed the previous 500 char limit
     op.execute("""
         ALTER TABLE llm_models
