@@ -1,11 +1,9 @@
 # ─── Backend Dockerfile (Optimized) ─────────────────────
 # Multi-stage: deps → production
-FROM python:3.12-slim AS deps
+FROM python:3.12-alpine AS deps
 
 WORKDIR /app
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libpq-dev && \
-    rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache gcc musl-dev libffi-dev postgresql-dev curl shadowsocks-libev
 
 COPY pyproject.toml ./
 ARG CLAWITH_PIP_INDEX_URL
@@ -19,27 +17,28 @@ RUN if [ -n "$CLAWITH_PIP_INDEX_URL" ] && [ -n "$CLAWITH_PIP_TRUSTED_HOST" ]; th
     fi
 
 # ─── Production ─────────────────────────────────────────
-FROM python:3.12-slim AS production
+FROM python:3.12-alpine AS production
 
 WORKDIR /app
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq5 curl shadowsocks-libev gosu && \
-    rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN apk add --no-cache libpq5 curl shadowsocks-libev dumb-init && \
+    addgroup -g 1001 -S clawith && \
+    adduser -S clawith -u 1001 -G clawith
 
 # Copy installed packages from deps stage
-COPY --from=deps /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
-COPY --from=deps /usr/local/bin/ /usr/local/bin/
+COPY --from=deps --chown=clawith:clawith /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+COPY --from=deps --chown=clawith:clawith /usr/local/bin/ /usr/local/bin/
 
 # Copy application code
-COPY . .
+COPY --chown=clawith:clawith . .
 
-RUN useradd --create-home clawith && \
-    mkdir -p /data/agents && \
-    chmod +x /app/entrypoint.sh && \
-    chown -R clawith:clawith /app /data
+# Create data directory and set permissions
+RUN mkdir -p /data/agents && \
+    chown -R clawith:clawith /app /data && \
+    chmod +x /app/entrypoint.sh
 
-# Note: USER is removed to allow entrypoint.sh to fix permissions of mounted volumes
-# at runtime. The entrypoint script will drop privileges to 'clawith' after fixing permissions.
+USER clawith
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
@@ -47,4 +46,4 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
 
 EXPOSE 8000
 # entrypoint.sh runs `alembic upgrade head` then `uvicorn`
-ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
+ENTRYPOINT ["dumb-init", "/bin/bash", "/app/entrypoint.sh"]

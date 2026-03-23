@@ -1,0 +1,28 @@
+# k8s/base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- namespace.yaml
+- postgres-deployment.yaml
+- postgres-service.yaml
+- redis-deployment.yaml
+- redis-service.yaml
+- backend-deployment.yaml
+- backend-service.yaml
+- frontend-deployment.yaml
+- frontend-service.yaml
+- ingress.yaml
+
+configMapGenerator:
+- name: clawith-config
+  literals:
+  - CORS_ORIGINS=["*"]
+  - JWT_ACCESS_TOKEN_EXPIRE_MINUTES=1440
+
+secretGenerator:
+- name: clawith-secrets
+  literals:
+  - SECRET_KEY=change-me-in-production
+  - JWT_SECRET_KEY=change-me-jwt-secret
+  - POSTGRES_PASSWORD=clawith

@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production"
     API_PREFIX: str = "/api"
 
+
+
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://clawith:clawith@localhost:5432/clawith"
 

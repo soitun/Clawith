@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.schemas import TokenResponse, UserLogin, UserOut, UserRegister, UserUpdate
 
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -34,6 +35,8 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     without a company — they must create or join one via /tenants/self-create
     or /tenants/join.
     """
+
+
     # Check existing
     existing = await db.execute(
         select(User).where((User.username == data.username) | (User.email == data.email))
@@ -180,6 +183,7 @@ async def change_password(
 
     if not old_password or not new_password:
         raise HTTPException(status_code=400, detail="Both old_password and new_password are required")
+
 
     if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="New password must be at least 6 characters")

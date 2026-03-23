@@ -1,9 +1,11 @@
 """Centralized logging configuration using loguru."""
 
 import sys
+import json
 import logging
 from contextvars import ContextVar
 from typing import Optional
+from datetime import datetime
 
 from loguru import logger
 
@@ -21,20 +23,60 @@ def set_trace_id(trace_id: str) -> None:
     trace_id_var.set(trace_id)
 
 
+def json_formatter(record):
+    """Custom JSON formatter for log records."""
+    log_entry = {
+        "timestamp": datetime.fromtimestamp(record["time"].timestamp()).isoformat(),
+        "level": record["level"].name,
+        "message": record["message"],
+        "logger": record["name"],
+        "function": record["function"],
+        "line": record["line"],
+        "file": record["file"].name,
+        "trace_id": record["extra"].get("trace_id", get_trace_id()),
+    }
+
+    # Add exception info if present
+    if record["exception"]:
+        log_entry["exception"] = {
+            "type": str(record["exception"].type),
+            "value": str(record["exception"].value),
+            "traceback": str(record["exception"].traceback),
+        }
+
+    return json.dumps(log_entry) + "\n"
+
+
 def configure_logging():
-    """Configure loguru with custom format including trace ID."""
+    """Configure loguru with JSON format including trace ID."""
     # Remove default handler
     logger.remove()
 
-    # Add stdout handler with custom format
-    logger.add(
-        sys.stdout,
-        level="INFO",
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{extra[trace_id]: <12}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        enqueue=True,
-        backtrace=True,
-        diagnose=True,
-    )
+    # Determine if we should use JSON format (based on environment variable)
+    import os
+    use_json_format = os.getenv("LOG_FORMAT", "text").lower() == "json"
+
+    if use_json_format:
+        # Add stdout handler with JSON format
+        logger.add(
+            sys.stdout,
+            level="INFO",
+            format=json_formatter,
+            serialize=False,
+            enqueue=True,
+            backtrace=True,
+            diagnose=True,
+        )
+    else:
+        # Add stdout handler with text format (including trace ID)
+        logger.add(
+            sys.stdout,
+            level="INFO",
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{extra[trace_id]: <12}</cyan> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+            enqueue=True,
+            backtrace=True,
+            diagnose=True,
+        )
 
     # Patch the default logger to include trace_id in extra
     logger.patch(lambda record: record["extra"].update(trace_id=get_trace_id()))
