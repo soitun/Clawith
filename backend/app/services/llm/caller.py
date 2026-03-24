@@ -708,10 +708,11 @@ async def call_agent_llm_with_tools(
                     response = await client.complete(
                         messages=api_messages,
                         tools=tools_for_llm if tools_for_llm else None,
-                        temperature=0.7,
+                        temperature=model.temperature,
                         max_tokens=max_tokens,
                     )
                 except Exception as e:
+                    logger.error(f"[call_agent_llm_with_tools] Agent {agent_id}: LLM call error: {e}")
                     await client.close()
                     raise
 
@@ -728,6 +729,7 @@ async def call_agent_llm_with_tools(
                         "type": "function",
                         "function": tc["function"],
                     } for tc in response.tool_calls],
+		            reasoning_content=response.reasoning_content,
                 ))
 
                 for tc in response.tool_calls:
