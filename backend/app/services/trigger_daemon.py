@@ -362,7 +362,7 @@ async def _invoke_agent_for_triggers(agent_id: uuid.UUID, triggers: list[AgentTr
 
     Creates a Reflection Session and calls the LLM.
     """
-    from app.api.websocket import call_llm
+    from app.services.llm import call_llm
     from app.services.agent_context import build_agent_context
     from app.models.llm import LLMModel
     from app.models.audit import ChatMessage

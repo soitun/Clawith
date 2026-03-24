@@ -1026,7 +1026,7 @@ async def _call_agent_llm(db: AsyncSession, agent_id: uuid.UUID, user_text: str,
     DEPRECATED: Use app.services.llm_caller.call_agent_llm instead.
     This function is kept for backward compatibility with existing imports.
     """
-    from app.services.llm_caller import call_agent_llm
+    from app.services.llm import call_agent_llm
     return await call_agent_llm(
         db=db,
         agent_id=agent_id,

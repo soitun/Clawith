@@ -111,7 +111,7 @@ You are now in TASK EXECUTION MODE (not a conversation). A task has been assigne
         user_prompt += "\n\n请认真完成此任务，给出详细的执行结果。"
 
     # Step 4: Call LLM with unified failover support
-    from app.services.llm_caller import call_agent_llm_with_tools
+    from app.services.llm import call_agent_llm_with_tools
 
     try:
         logger.info(f"[TaskExec] Calling LLM with tools for task: {task_title}")

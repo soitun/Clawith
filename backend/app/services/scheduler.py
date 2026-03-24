@@ -62,7 +62,7 @@ async def _execute_schedule(schedule_id: uuid.UUID, agent_id: uuid.UUID, instruc
 
             # Build context and call LLM with failover support
             from app.services.agent_context import build_agent_context
-            from app.services.llm_caller import call_agent_llm_with_tools
+            from app.services.llm import call_agent_llm_with_tools
 
             system_prompt = await build_agent_context(agent_id, agent.name, agent.role_description or "")
 
