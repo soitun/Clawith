@@ -50,7 +50,32 @@ Each behavior-driving fact has one authoritative owner. Other layers may submit 
 - **Tests enforce behavior, not product truth.** A passing test proves that the implementation matches its asserted behavior; it does not prove that the asserted behavior matches the current product or architecture contract. Update obsolete tests together with an explicitly approved contract change, and never change an expectation merely to make a failure disappear.
 - **Non-trivial changes keep code, Agent Notes, and commit history aligned.** Any change to behavior, architecture, a shared contract, Runtime semantics, persistence, security, permissions, compatibility, or engineering process must add or update its owning Agent Note in the same change. The code implements the decision, the Agent Note owns its durable rationale and current contract, and the commit message records the intent, scope, and verification of this change. These three records must not contradict one another. Update an existing owning note instead of creating a duplicate; only mechanical or strictly local changes are exempt.
 
-## 3. Type Checking
+## 3. Change Discipline
+
+- Keep each change scoped to one intent. Do not mix structural refactoring,
+  behavior changes, compatibility work, and unrelated cleanup.
+- Preserve verified behavior unless the task explicitly changes the owning
+  product or architecture contract.
+- Before introducing an abstraction, identify the current owner and consumer.
+  Delete obsolete code, reuse the existing owner when it already fits, and move
+  misplaced behavior back to that owner while removing bypass paths. Add a new
+  layer only when it has an independently changing responsibility and a current
+  consumer.
+- **Delete verified dead code.** Once code, configuration, tests, compatibility
+  paths, or documentation are confirmed to have no current contract or
+  production consumer, remove them in the same change. Do not keep
+  commented-out implementations, speculative fallbacks, or tests that only
+  preserve deleted behavior.
+- Preserve unrelated working-tree changes and user-owned files.
+- Use repository-relative paths in code, documentation, and instructions.
+- When ownership or a boundary changes, update the nearest path-specific
+  `AGENTS.md` and the corresponding durable documentation.
+- Do not add fallback or compatibility paths without a documented reason,
+  regression coverage, and a removal condition.
+- Keep source facts, test evidence, CI evidence, deployment evidence, and
+  live-system evidence clearly separated.
+
+## 4. Type Checking
 
 Everything compiles under `strict: true` with `noImplicitAny`; every remaining `any` explains why narrowing is infeasible.
 
@@ -62,14 +87,14 @@ Every new or changed automated rule must include positive and negative coverage:
 valid cases pass, and representative invalid cases fail for the intended
 reason.
 
-## 4. Quick Command Reference
+## 5. Quick Command Reference
 
 Dev and test commands live in sub-project instruction files:
 
 - Backend: `backend/AGENTS.md` (Server start, Alembic migrations, Pytest, Ruff)
 - Frontend: `frontend/AGENTS.md` (Vite dev server, type-check, lint, build)
 
-## 5. Failure Diagnosis and Handling
+## 6. Failure Diagnosis and Handling
 
 When a command fails:
 
@@ -90,7 +115,7 @@ Do not:
 - Modify product code to accommodate the current machine before evidence shows that the environment is the failing layer and that a product-level portability change is required.
 - Dismiss a test failure as an environment problem before collecting environment evidence and ruling out a product-code regression.
 
-## 6. Verification
+## 7. Verification
 
 After code changes, verification scope is determined by the affected contracts and consumers, not by the number of modified files. Cross-layer changes must follow the real execution path and update and verify every affected layer; local changes require only local evidence.
 
